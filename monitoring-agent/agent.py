@@ -1,23 +1,25 @@
 import psutil
-import influxdb_client
+import requests
 import time
 import subprocess
 import json
-from influxdb_client import Point
-from influxdb_client.client.write_api import SYNCHRONOUS
+import argparse
 
-# InfluxDB 2.x details
-url = "http://82.165.230.7:8086"  # Update with your InfluxDB 2.x URL if necessary
-token = "YnymHsvPMle5ppoGZKDLegZTHyypPtoJFW1sXRWdSH2paW-n24Io45vNObLHlfheaWDAT0e94OfMkRmOcRHmFw=="
-org = "liberrex"
-bucket = "metrics"
+# InfluxDB 1.x details
+url = "http://82.165.230.7:8086"
+username = "liberrex"
+password = "test"
+database = "metrics"
 
-# Define the host name (customize for each machine)
-host = "monitoring_server"
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description='System Monitoring Agent')
+parser.add_argument('--host', 
+                    required=True, 
+                    help='Hostname for the monitoring agent')
+args = parser.parse_args()
 
-# Initialize InfluxDB client
-client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
-write_api = client.write_api(write_options=SYNCHRONOUS)
+# Define the host name from command-line argument
+host = args.host
 
 # Variables to store previous net_io values
 previous_net_io = psutil.net_io_counters()
@@ -119,21 +121,18 @@ def collect_metrics():
     # Collect SSH sessions
     ssh_sessions = collect_ssh_sessions()
 
+    # Prepare points for InfluxDB 1.x line protocol
     points = [
-        Point("cpu").tag("host", host).field("percent", cpu_percent),
-        Point("memory").tag("host", host).field("total", memory.total).field("available", memory.available).field("percent", memory.percent),
-        Point("disk").tag("host", host).field("total", disk.total).field("used", disk.used).field("percent", disk.percent)
-        .field("disk_read_per_second", disk_read_per_second).field("disk_write_per_second", disk_write_per_second),
-        Point("network").tag("host", host).field("sent_per_second", bytes_sent_per_second).field("received_per_second", bytes_received_per_second).field("ip_adr", local_ip),
-        Point("uptime").tag("host", host).field("uptime_seconds", uptime_seconds)
+        f"cpu,host={host} percent={cpu_percent}",
+        f"memory,host={host} total={memory.total},available={memory.available},percent={memory.percent}",
+        f"disk,host={host} total={disk.total},used={disk.used},percent={disk.percent}," +
+        f"disk_read_per_second={disk_read_per_second},disk_write_per_second={disk_write_per_second}",
+        f"network,host={host} sent_per_second={bytes_sent_per_second}," + 
+        f"received_per_second={bytes_received_per_second},ip_adr=\"{local_ip}\"",
+        f"uptime,host={host} uptime_seconds={uptime_seconds}",
+        f"ssh_sessions,host={host} active_count={len(ssh_sessions)}," +
+        f"sessions_json=\"{json.dumps(ssh_sessions).replace('\"', '\\"')}\""
     ]
-
-    # Add SSH sessions point if there are any sessions
-    # Always send the SSH sessions point, even if empty
-    ssh_point = Point("ssh_sessions").tag("host", host)
-    ssh_point.field("active_count", len(ssh_sessions))
-    ssh_point.field("sessions_json", json.dumps(ssh_sessions))
-    points.append(ssh_point)
 
     return points
 
@@ -141,11 +140,34 @@ def send_metrics():
     """Collect and send metrics to InfluxDB."""
     metrics = collect_metrics()
     try:
-        write_api.write(bucket=bucket, org=org, record=metrics)
-        print("Metrics written successfully.")
+        # Prepare request parameters
+        params = {
+            'u': username,
+            'p': password,
+            'db': database
+        }
+
+        # Combine all points into a single payload
+        payload = "\n".join(metrics)
+
+        # Send metrics to InfluxDB
+        response = requests.post(
+            f"{url}/write",
+            params=params,
+            data=payload.encode('utf-8')
+        )
+
+        # Check response
+        if response.status_code != 204:
+            print(f"Error sending metrics: {response.text}")
+        else:
+            print(f"Metrics written successfully for host: {host}")
+
     except Exception as e:
         print(f"Error sending data to InfluxDB: {e}")
 
-while True:
-    send_metrics()
-    time.sleep(30)
+if __name__ == "__main__":
+    print(f"Starting monitoring agent for host: {host}")
+    while True:
+        send_metrics()
+        time.sleep(30)
