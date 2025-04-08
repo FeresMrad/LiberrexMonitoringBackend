@@ -1,25 +1,28 @@
 import psutil
-import requests
+import influxdb_client
 import time
 import subprocess
 import json
 import argparse
+from influxdb_client import Point
+from influxdb_client.client.write_api import SYNCHRONOUS
 
-# InfluxDB 1.x details
-url = "http://82.165.230.7:8086"
-username = "liberrex"
-password = "test"
-database = "metrics"
+# InfluxDB 2.x details
+url = "http://82.165.230.7:8086"  # Update with your InfluxDB 2.x URL if necessary
+token = "YnymHsvPMle5ppoGZKDLegZTHyypPtoJFW1sXRWdSH2paW-n24Io45vNObLHlfheaWDAT0e94OfMkRmOcRHmFw=="
+org = "liberrex"
+bucket = "metrics"
 
 # Parse command-line arguments
-parser = argparse.ArgumentParser(description='System Monitoring Agent')
-parser.add_argument('--host', 
-                    required=True, 
-                    help='Hostname for the monitoring agent')
+parser = argparse.ArgumentParser(description="Monitoring Agent")
+parser.add_argument("--host", required=True, help="Hostname to tag metrics with")
 args = parser.parse_args()
-
-# Define the host name from command-line argument
 host = args.host
+
+
+# Initialize InfluxDB client
+client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
+write_api = client.write_api(write_options=SYNCHRONOUS)
 
 # Variables to store previous net_io values
 previous_net_io = psutil.net_io_counters()
@@ -39,30 +42,30 @@ def collect_ssh_sessions():
         # Run the 'who' command to get active sessions
         process = subprocess.Popen(['who'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
-        
+
         if stderr:
             print(f"Error getting SSH sessions: {stderr.decode('utf-8')}")
             return []
-        
+
         stdout_text = stdout.decode('utf-8')
         print(f"Raw 'who' output: {stdout_text}")  # Debug output
-        
+
         sessions = []
         for line in stdout_text.splitlines():
             if not line.strip():
                 continue
-                
+
             print(f"Processing line: {line}")  # Debug output
-            
+
             # Split the line into parts
             parts = line.split()
             print(f"Parts: {parts}")  # Debug output
-            
+
             # The 'who' command output format might vary, we need to be more flexible
             if len(parts) >= 3:  # At minimum we need username, tty, and time
                 username = parts[0]
                 tty = parts[1]
-                
+
                 # If it contains 'pts', it's likely an SSH session
                 # Check different indices for IP address (depends on output format)
                 remote_addr = None
@@ -70,7 +73,7 @@ def collect_ssh_sessions():
                     if '(' in part and ')' in part:
                         remote_addr = part.strip('()')
                         break
-                
+
                 if 'pts' in tty and remote_addr:
                     login_time_parts = []
                     for i in range(2, len(parts)):
@@ -78,19 +81,19 @@ def collect_ssh_sessions():
                             login_time_parts.append(parts[i])
                         else:
                             break
-                    
+
                     login_time = ' '.join(login_time_parts)
-                    
+
                     session = {
                         'user': username,
                         'tty': tty,
                         'from': remote_addr,
                         'login_time': login_time
                     }
-                    
+
                     print(f"Found session: {session}")  # Debug output
                     sessions.append(session)
-        
+
         print(f"Total sessions found: {len(sessions)}")  # Debug output
         return sessions
     except Exception as e:
@@ -121,18 +124,21 @@ def collect_metrics():
     # Collect SSH sessions
     ssh_sessions = collect_ssh_sessions()
 
-    # Prepare points for InfluxDB 1.x line protocol
     points = [
-        f"cpu,host={host} percent={cpu_percent}",
-        f"memory,host={host} total={memory.total},available={memory.available},percent={memory.percent}",
-        f"disk,host={host} total={disk.total},used={disk.used},percent={disk.percent}," +
-        f"disk_read_per_second={disk_read_per_second},disk_write_per_second={disk_write_per_second}",
-        f"network,host={host} sent_per_second={bytes_sent_per_second}," + 
-        f"received_per_second={bytes_received_per_second},ip_adr=\"{local_ip}\"",
-        f"uptime,host={host} uptime_seconds={uptime_seconds}",
-        f"ssh_sessions,host={host} active_count={len(ssh_sessions)}," +
-        f"sessions_json=\"{json.dumps(ssh_sessions).replace('\"', '\\"')}\""
+        Point("cpu").tag("host", host).field("percent", cpu_percent),
+        Point("memory").tag("host", host).field("total", memory.total).field("available", memory.available).field("percent", memory.percent),
+        Point("disk").tag("host", host).field("total", disk.total).field("used", disk.used).field("percent", disk.percent)
+        .field("disk_read_per_second", disk_read_per_second).field("disk_write_per_second", disk_write_per_second),
+        Point("network").tag("host", host).field("sent_per_second", bytes_sent_per_second).field("received_per_second", bytes_received_per_second).field("ip_adr", local_ip),
+        Point("uptime").tag("host", host).field("uptime_seconds", uptime_seconds)
     ]
+
+    # Add SSH sessions point if there are any sessions
+    # Always send the SSH sessions point, even if empty
+    ssh_point = Point("ssh_sessions").tag("host", host)
+    ssh_point.field("active_count", len(ssh_sessions))
+    ssh_point.field("sessions_json", json.dumps(ssh_sessions))
+    points.append(ssh_point)
 
     return points
 
@@ -140,34 +146,11 @@ def send_metrics():
     """Collect and send metrics to InfluxDB."""
     metrics = collect_metrics()
     try:
-        # Prepare request parameters
-        params = {
-            'u': username,
-            'p': password,
-            'db': database
-        }
-
-        # Combine all points into a single payload
-        payload = "\n".join(metrics)
-
-        # Send metrics to InfluxDB
-        response = requests.post(
-            f"{url}/write",
-            params=params,
-            data=payload.encode('utf-8')
-        )
-
-        # Check response
-        if response.status_code != 204:
-            print(f"Error sending metrics: {response.text}")
-        else:
-            print(f"Metrics written successfully for host: {host}")
-
+        write_api.write(bucket=bucket, org=org, record=metrics)
+        print("Metrics written successfully.")
     except Exception as e:
         print(f"Error sending data to InfluxDB: {e}")
 
-if __name__ == "__main__":
-    print(f"Starting monitoring agent for host: {host}")
-    while True:
-        send_metrics()
-        time.sleep(30)
+while True:
+    send_metrics()
+    time.sleep(30)

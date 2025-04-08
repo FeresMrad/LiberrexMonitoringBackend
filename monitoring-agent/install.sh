@@ -31,7 +31,7 @@ apt install -y \
 python3 -m venv /opt/monitoring-agent/venv
 
 # Activate virtual environment and install Python packages
-/opt/monitoring-agent/venv/bin/pip install --break-system-packages psutil requests
+/opt/monitoring-agent/venv/bin/pip install psutil requests influxdb-client
 
 # Create directory for monitoring agent
 mkdir -p /opt/monitoring-agent
