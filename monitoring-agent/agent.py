@@ -48,18 +48,18 @@ def collect_ssh_sessions():
             return []
 
         stdout_text = stdout.decode('utf-8')
-        print(f"Raw 'who' output: {stdout_text}")  # Debug output
+        #print(f"Raw 'who' output: {stdout_text}")  # Debug output
 
         sessions = []
         for line in stdout_text.splitlines():
             if not line.strip():
                 continue
 
-            print(f"Processing line: {line}")  # Debug output
+            #print(f"Processing line: {line}")  # Debug output
 
             # Split the line into parts
             parts = line.split()
-            print(f"Parts: {parts}")  # Debug output
+            #print(f"Parts: {parts}")  # Debug output
 
             # The 'who' command output format might vary, we need to be more flexible
             if len(parts) >= 3:  # At minimum we need username, tty, and time
@@ -91,10 +91,10 @@ def collect_ssh_sessions():
                         'login_time': login_time
                     }
 
-                    print(f"Found session: {session}")  # Debug output
+                    #print(f"Found session: {session}")  # Debug output
                     sessions.append(session)
 
-        print(f"Total sessions found: {len(sessions)}")  # Debug output
+        #print(f"Total sessions found: {len(sessions)}")  # Debug output
         return sessions
     except Exception as e:
         print(f"Error collecting SSH sessions: {e}")
