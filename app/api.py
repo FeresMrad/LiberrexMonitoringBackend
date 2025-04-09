@@ -102,10 +102,12 @@ def get_hosts():
 
 # Metrics API Routes
 @api_bp.route('/metrics/<measurement>', methods=['GET'])
+@api_bp.route('/metrics/<measurement>', methods=['GET'])
 def get_metrics(measurement):
     """Get metrics for a specific measurement type."""
     host = request.args.get('host')
     time_range = request.args.get('timeRange')
+    latest_only = request.args.get('latest', 'false').lower() == 'true'
 
     if not host:
         return jsonify({"error": "Host parameter is required"}), 400
@@ -113,33 +115,63 @@ def get_metrics(measurement):
     # Build query based on the measurement type
     if measurement == 'cpu':
         field = 'percent'
-        query = f'SELECT {field} FROM {measurement} WHERE host=\'{host}\''
+        if latest_only:
+            query = f'SELECT {field} FROM {measurement} WHERE host=\'{host}\' ORDER BY time DESC LIMIT 1'
+        else:
+            query = f'SELECT {field} FROM {measurement} WHERE host=\'{host}\''
     elif measurement == 'memory':
         field = 'percent'
-        query = f'SELECT {field} FROM {measurement} WHERE host=\'{host}\''
+        if latest_only:
+            query = f'SELECT {field} FROM {measurement} WHERE host=\'{host}\' ORDER BY time DESC LIMIT 1'
+        else:
+            query = f'SELECT {field} FROM {measurement} WHERE host=\'{host}\''
     elif measurement == 'disk':
-        query = f'SELECT percent, disk_read_per_second, disk_write_per_second FROM {measurement} WHERE host=\'{host}\''
+        if latest_only:
+            query = f'SELECT percent, disk_read_per_second, disk_write_per_second FROM {measurement} WHERE host=\'{host}\' ORDER BY time DESC LIMIT 1'
+        else:
+            query = f'SELECT percent, disk_read_per_second, disk_write_per_second FROM {measurement} WHERE host=\'{host}\''
     elif measurement == 'network':
-        query = f'SELECT sent_per_second, received_per_second FROM {measurement} WHERE host=\'{host}\''
+        if latest_only:
+            query = f'SELECT sent_per_second, received_per_second FROM {measurement} WHERE host=\'{host}\' ORDER BY time DESC LIMIT 1'
+        else:
+            query = f'SELECT sent_per_second, received_per_second FROM {measurement} WHERE host=\'{host}\''
     elif measurement == 'specs':
         # Special case for specs - we need to make multiple queries
         return get_host_specs(host)
     else:
         return jsonify({"error": f"Invalid measurement type: {measurement}"}), 400
 
-    # Add time range if specified
-    if time_range and time_range != 'all':
+    # Add time range if specified and not requesting latest only
+    if time_range and time_range != 'all' and not latest_only:
         query += f' AND time > now() - {time_range} ORDER BY time ASC'
+    elif not latest_only:
+        # If no time range specified and not latest only, add default sorting
+        query += ' ORDER BY time ASC'
 
     response = query_influxdb(query)
 
     # Process the response based on the measurement type
     if not response["results"][0].get("series"):
-        return jsonify([])
+        # Return an empty list for time series or an empty object for latest only
+        return jsonify([] if not latest_only else {})
 
     values = response["results"][0]["series"][0]["values"]
     columns = response["results"][0]["series"][0]["columns"]
 
+    # If we're only interested in the latest value, return it as a single object
+    if latest_only:
+        result = {}
+        for i, column in enumerate(columns[1:], 1):
+            # For disk and network measurements, convert bytes to KB
+            if measurement in ['disk', 'network'] and column in ['disk_read_per_second', 'disk_write_per_second', 'sent_per_second', 'received_per_second']:
+                result[column] = values[0][i] / 1024 if values[0][i] is not None else 0
+            else:
+                result[column] = values[0][i]
+        
+        # Add the timestamp
+        result['time'] = values[0][0]
+        return jsonify(result)
+    
     # Convert to a list of dictionaries for easier consumption by the frontend
     results = []
     for value in values:
@@ -153,7 +185,6 @@ def get_metrics(measurement):
         results.append(result)
 
     return jsonify(results)
-
 
 @api_bp.route('/metrics/specs', methods=['GET'])
 def get_host_specs(host=None):
