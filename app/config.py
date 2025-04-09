@@ -13,13 +13,13 @@ class Config:
     TESTING = False
     
     # InfluxDB configuration
-    INFLUXDB_URL = os.getenv('INFLUXDB_URL', 'http://82.165.230.7:8086')
-    INFLUXDB_USER = os.getenv('INFLUXDB_USER', 'liberrex')
-    INFLUXDB_PASSWORD = os.getenv('INFLUXDB_PASSWORD', 'test')
-    INFLUXDB_DATABASE = os.getenv('INFLUXDB_DATABASE', 'metrics')
+    INFLUXDB_URL = os.getenv('INFLUXDB_URL')
+    INFLUXDB_USER = os.getenv('INFLUXDB_USER')
+    INFLUXDB_PASSWORD = os.getenv('INFLUXDB_PASSWORD')
+    INFLUXDB_DATABASE = os.getenv('INFLUXDB_DATABASE')
     
     # VictoriaLogs configuration
-    VICTORIALOGS_URL = os.getenv('VICTORIALOGS_URL', 'http://82.165.230.7:9428')
+    VICTORIALOGS_URL = os.getenv('VICTORIALOGS_URL')
 
 
 class DevelopmentConfig(Config):
@@ -37,9 +37,6 @@ class ProductionConfig(Config):
     """Production configuration."""
     # In production, ensure these are set in environment variables
     SECRET_KEY = os.getenv('SECRET_KEY')
-    
-    # Override default values with None to force setting in production
-    INFLUXDB_PASSWORD = os.getenv('INFLUXDB_PASSWORD')
 
 
 # Map config name to config class
