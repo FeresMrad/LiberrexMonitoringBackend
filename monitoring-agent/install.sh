@@ -54,6 +54,31 @@ Restart=always
 WantedBy=multi-user.target
 EOL
 
+# Add configuration to rsyslog if not already present
+echo "# Checking and configuring rsyslog for remote logging"
+
+# Check if LocalHostName line exists
+if ! grep -q "^\$LocalHostName $HOST" /etc/rsyslog.conf; then
+    echo "\$LocalHostName $HOST" >> /etc/rsyslog.conf
+    echo "Added LocalHostName configuration to rsyslog"
+else
+    echo "LocalHostName already configured in rsyslog"
+fi
+
+# Check if forwarding rule exists
+if ! grep -q "^\*\.\*  @@82\.165\.230\.7:29514" /etc/rsyslog.conf; then
+    echo "*.*  @@82.165.230.7:29514" >> /etc/rsyslog.conf
+    echo "Added remote logging configuration to rsyslog"
+else
+    echo "Remote logging already configured in rsyslog"
+fi
+
+# Restart rsyslog service only if changes were made
+if grep -q "^\$LocalHostName $HOST" /etc/rsyslog.conf && grep -q "^\*\.\*  @@82\.165\.230\.7:29514" /etc/rsyslog.conf; then
+    systemctl restart rsyslog
+    echo "Rsyslog configured and restarted for remote logging"
+fi
+
 # Reload systemd to recognize the new service
 systemctl daemon-reload
 
