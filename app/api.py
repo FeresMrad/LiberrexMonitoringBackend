@@ -102,7 +102,6 @@ def get_hosts():
 
 # Metrics API Routes
 @api_bp.route('/metrics/<measurement>', methods=['GET'])
-@api_bp.route('/metrics/<measurement>', methods=['GET'])
 def get_metrics(measurement):
     """Get metrics for a specific measurement type."""
     host = request.args.get('host')
