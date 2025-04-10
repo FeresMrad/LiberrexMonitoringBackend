@@ -7,7 +7,7 @@ from flask import current_app
 USERS = {
     'admin@example.com': {
         'password': 'adminpass',
-        'allowed_hosts': ['monitoring_server', 'web_server', 'database_server']
+        'allowed_hosts': ['monitoring_server', 'web_server', 'database_server', 'Test']
     },
     'user@example.com': {
         'password': 'userpass',
