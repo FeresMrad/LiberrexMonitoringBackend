@@ -1,7 +1,7 @@
 """Socket.IO event handlers with JWT authentication."""
 from flask import request
 from flask_socketio import join_room, leave_room, disconnect
-from app.auth import validate_token
+from app.auth import validate_token, get_accessible_hosts
 
 def register_socket_events(socketio, host_subscribers):
     """Register Socket.IO event handlers with the socketio instance."""
@@ -22,8 +22,10 @@ def register_socket_events(socketio, host_subscribers):
             disconnect()
             return False
         
-        # Store user data for this socket session
+        # Store user data and accessible hosts for this socket session
         request.socket_user = payload
+        request.socket_user['accessible_hosts'] = get_accessible_hosts(payload)
+        
         print(f'Client {request.sid} connected as {payload["user_id"]}')
 
     @socketio.on('disconnect')
@@ -46,8 +48,9 @@ def register_socket_events(socketio, host_subscribers):
             return
         
         # Check if user has permission to subscribe to this host
-        allowed_hosts = getattr(request, 'socket_user', {}).get('allowed_hosts', [])
-        if host not in allowed_hosts:
+        # Admin users can access all hosts
+        accessible_hosts = getattr(request, 'socket_user', {}).get('accessible_hosts', [])
+        if host not in accessible_hosts:
             print(f'Client {request.sid} unauthorized access attempt to host {host}')
             return
 

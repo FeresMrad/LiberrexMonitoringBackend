@@ -65,32 +65,17 @@ def login():
         return jsonify({'error': 'Invalid credentials'}), 401
     
     # Generate JWT token with user info and permissions
-    token = generate_token(user_data['email'], user_data['allowed_hosts'])
+    token = generate_token(
+        user_data['email'], 
+        is_admin=user_data.get('is_admin', False),
+        allowed_hosts=user_data['allowed_hosts']
+    )
     
     return jsonify({
         'token': token,
         'email': user_data['email'],
+        'is_admin': user_data.get('is_admin', False),
         'allowed_hosts': user_data['allowed_hosts']
-    })
-
-@api_bp.route('/auth/validate', methods=['POST'])
-def validate():
-    """Validate a token and return user info."""
-    data = request.get_json()
-    token = data.get('token')
-    
-    if not token:
-        return jsonify({'error': 'Token required'}), 400
-        
-    payload = validate_token(token)
-    
-    if not payload:
-        return jsonify({'error': 'Invalid or expired token'}), 401
-    
-    return jsonify({
-        'valid': True,
-        'user_id': payload['user_id'],
-        'allowed_hosts': payload['allowed_hosts']
     })
 
 @api_bp.route('/hosts', methods=['GET'])
