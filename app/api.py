@@ -8,6 +8,8 @@ from flask import Blueprint, jsonify, request, current_app
 from app.services.influxdb import query_influxdb, fetch_host_metric
 from app.services.victorialogs import query_victorialogs
 
+from app.auth import authenticate_user, generate_token
+
 # Create a blueprint for the API
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -46,6 +48,51 @@ def format_time_range_params(params, time_range):
 
 
 # Host API Routes
+
+@api_bp.route('/auth/login', methods=['POST'])
+def login():
+    """Authenticate user and return token."""
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+        
+    success, user_data = authenticate_user(email, password)
+    
+    if not success:
+        return jsonify({'error': 'Invalid credentials'}), 401
+    
+    # Generate JWT token with user info and permissions
+    token = generate_token(user_data['email'], user_data['allowed_hosts'])
+    
+    return jsonify({
+        'token': token,
+        'email': user_data['email'],
+        'allowed_hosts': user_data['allowed_hosts']
+    })
+
+@api_bp.route('/auth/validate', methods=['POST'])
+def validate():
+    """Validate a token and return user info."""
+    data = request.get_json()
+    token = data.get('token')
+    
+    if not token:
+        return jsonify({'error': 'Token required'}), 400
+        
+    payload = validate_token(token)
+    
+    if not payload:
+        return jsonify({'error': 'Invalid or expired token'}), 401
+    
+    return jsonify({
+        'valid': True,
+        'user_id': payload['user_id'],
+        'allowed_hosts': payload['allowed_hosts']
+    })
+
 @api_bp.route('/hosts', methods=['GET'])
 def get_hosts():
     """Get all monitored hosts with basic metrics."""
