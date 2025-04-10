@@ -13,6 +13,13 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
+# Check if there are too many arguments (unquoted multi-word hostname)
+if [ $# -gt 1 ]; then
+    echo "Error: Hostname with spaces must be enclosed in quotes"
+    echo "Example: $0 \"test host\""
+    exit 1
+fi
+
 # Get the hostname from the first argument
 HOST=$1
 
@@ -46,7 +53,7 @@ Description=System Monitoring Agent
 After=network.target
 
 [Service]
-ExecStart=/opt/monitoring-agent/venv/bin/python /opt/monitoring-agent/agent.py --host $HOST
+ExecStart=/opt/monitoring-agent/venv/bin/python /opt/monitoring-agent/agent.py --host "$HOST"
 WorkingDirectory=/opt/monitoring-agent
 Restart=always
 
