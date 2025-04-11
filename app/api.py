@@ -64,18 +64,12 @@ def login():
     if not success:
         return jsonify({'error': 'Invalid credentials'}), 401
     
-    # Generate JWT token with user info and permissions
-    token = generate_token(
-        user_data['email'], 
-        is_admin=user_data.get('is_admin', False),
-        allowed_hosts=user_data['allowed_hosts']
-    )
+    # Generate JWT token with user info
+    token = generate_token(user_data['email'])
     
     return jsonify({
         'token': token,
-        'email': user_data['email'],
-        'is_admin': user_data.get('is_admin', False),
-        'allowed_hosts': user_data['allowed_hosts']
+        'email': user_data['email']
     })
 
 @api_bp.route('/auth/validate', methods=['POST', 'OPTIONS'])
@@ -97,12 +91,10 @@ def validate_token_endpoint():
     if not payload:
         return jsonify({'error': 'Invalid token'}), 401
     
-    # Return user data from token
+    # Return user data from token - simplified
     return jsonify({
         'valid': True,
-        'email': payload['user_id'],
-        'is_admin': payload.get('is_admin', False),
-        'allowed_hosts': payload.get('allowed_hosts', [])
+        'email': payload['user_id']
     })
 
 @api_bp.route('/hosts', methods=['GET'])

@@ -1,7 +1,7 @@
 """Socket.IO event handlers with JWT authentication."""
 from flask import request
 from flask_socketio import join_room, leave_room, disconnect
-from app.auth import validate_token, get_accessible_hosts
+from app.auth import validate_token
 
 def register_socket_events(socketio, host_subscribers):
     """Register Socket.IO event handlers with the socketio instance."""
@@ -22,10 +22,8 @@ def register_socket_events(socketio, host_subscribers):
             disconnect()
             return False
         
-        # Store user data and accessible hosts for this socket session
+        # Store user data
         request.socket_user = payload
-        request.socket_user['accessible_hosts'] = get_accessible_hosts(payload)
-        
         print(f'Client {request.sid} connected as {payload["user_id"]}')
 
     @socketio.on('disconnect')
@@ -42,25 +40,16 @@ def register_socket_events(socketio, host_subscribers):
 
     @socketio.on('subscribe')
     def handle_subscribe(data):
-        """Handle client subscription to a host with access control."""
+        """Handle client subscription to a host."""
         host = data.get('host')
         if not host:
             return
         
-        # Check if user has permission to subscribe to this host
-        # Admin users can access all hosts
-        accessible_hosts = getattr(request, 'socket_user', {}).get('accessible_hosts', [])
-        if host not in accessible_hosts:
-            print(f'Client {request.sid} unauthorized access attempt to host {host}')
-            return
-
         # Add client to host room
         join_room(host)
 
-        # Add client to subscribers list
-        if host not in host_subscribers:
-            host_subscribers[host] = set()
-        host_subscribers[host].add(request.sid)
+        # Add client to subscribers list - simplified
+        host_subscribers.setdefault(host, set()).add(request.sid)
 
         user_id = getattr(request, 'socket_user', {}).get('user_id', 'unknown')
         print(f'Client {request.sid} ({user_id}) subscribed to host {host}')
