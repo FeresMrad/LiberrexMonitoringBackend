@@ -105,6 +105,19 @@ def get_hosts():
 
     hosts_data = []
 
+    # Fetch custom names in a separate query
+    custom_names_query = 'SELECT last("custom_name") FROM "custom_data" GROUP BY "host"'
+    custom_names_response = query_influxdb(custom_names_query)
+    
+    # Process custom names into a dictionary for easy lookup
+    custom_names = {}
+    if custom_names_response["results"][0].get("series"):
+        for series in custom_names_response["results"][0]["series"]:
+            if "tags" in series and "host" in series["tags"]:
+                host_tag = series["tags"]["host"]
+                custom_name = series["values"][0][1] if series["values"][0][1] is not None else ""
+                custom_names[host_tag] = custom_name
+
     if response["results"][0].get("series"):
         for item in response["results"][0]["series"][0]["values"]:
             host_name = item[1]
@@ -112,6 +125,7 @@ def get_hosts():
             # Fetch host metrics
             host_data = {
                 "name": host_name,
+                "customName": custom_names.get(host_name, ""),  # Add custom name here
                 "ip": fetch_host_metric(host_name, "network", "ip_adr"),
                 "cpuUsage": fetch_host_metric(host_name, "cpu", "percent"),
                 "memoryUsage": fetch_host_metric(host_name, "memory", "percent"),
