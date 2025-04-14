@@ -6,23 +6,6 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Check if hostname is provided
-if [ $# -eq 0 ]; then
-    echo "Error: Hostname must be specified"
-    echo "Usage: $0 <hostname>"
-    exit 1
-fi
-
-# Check if there are too many arguments (unquoted multi-word hostname)
-if [ $# -gt 1 ]; then
-    echo "Error: Hostname with spaces must be enclosed in quotes"
-    echo "Example: $0 \"test host\""
-    exit 1
-fi
-
-# Get the hostname from the first argument
-HOST=$1
-
 # Update package lists
 apt update
 
@@ -34,17 +17,29 @@ apt install -y \
     python3-venv \
     build-essential
 
+# Create the agent directory
+mkdir -p /opt/monitoring-agent
+
 # Create a virtual environment
 python3 -m venv /opt/monitoring-agent/venv
 
 # Activate virtual environment and install Python packages
-/opt/monitoring-agent/venv/bin/pip install psutil requests influxdb-client
-
-# Create directory for monitoring agent
-mkdir -p /opt/monitoring-agent
+/opt/monitoring-agent/venv/bin/pip install psutil requests influxdb-client uuid
 
 # Copy agent script
 cp agent.py /opt/monitoring-agent/agent.py
+
+# Generate or read agent-id for rsyslog configuration
+AGENT_ID_FILE="/opt/monitoring-agent/agent-id"
+if [ -f "$AGENT_ID_FILE" ]; then
+    AGENT_ID=$(cat "$AGENT_ID_FILE")
+    echo "Using existing agent-id: $AGENT_ID"
+else
+    # Generate a new UUID
+    AGENT_ID=$(python3 -c 'import uuid; print(str(uuid.uuid4()))')
+    echo "$AGENT_ID" > "$AGENT_ID_FILE"
+    echo "Generated new agent-id: $AGENT_ID"
+fi
 
 # Create systemd service file
 cat > /etc/systemd/system/monitoring-agent.service << EOL
@@ -53,7 +48,7 @@ Description=System Monitoring Agent
 After=network.target
 
 [Service]
-ExecStart=/opt/monitoring-agent/venv/bin/python /opt/monitoring-agent/agent.py --host "$HOST"
+ExecStart=/opt/monitoring-agent/venv/bin/python /opt/monitoring-agent/agent.py
 WorkingDirectory=/opt/monitoring-agent
 Restart=always
 
@@ -65,8 +60,8 @@ EOL
 echo "# Checking and configuring rsyslog for remote logging"
 
 # Check if LocalHostName line exists
-if ! grep -q "^\$LocalHostName $HOST" /etc/rsyslog.conf; then
-    echo "\$LocalHostName $HOST" >> /etc/rsyslog.conf
+if ! grep -q "^\$LocalHostName $AGENT_ID" /etc/rsyslog.conf; then
+    echo "\$LocalHostName $AGENT_ID" >> /etc/rsyslog.conf
     echo "Added LocalHostName configuration to rsyslog"
 else
     echo "LocalHostName already configured in rsyslog"
@@ -81,7 +76,7 @@ else
 fi
 
 # Restart rsyslog service only if changes were made
-if grep -q "^\$LocalHostName $HOST" /etc/rsyslog.conf && grep -q "^\*\.\*  @@82\.165\.230\.7:29514" /etc/rsyslog.conf; then
+if grep -q "^\$LocalHostName $AGENT_ID" /etc/rsyslog.conf && grep -q "^\*\.\*  @@82\.165\.230\.7:29514" /etc/rsyslog.conf; then
     systemctl restart rsyslog
     echo "Rsyslog configured and restarted for remote logging"
 fi
@@ -95,4 +90,4 @@ systemctl enable monitoring-agent
 # Start the service
 systemctl start monitoring-agent
 
-echo "Monitoring agent installed and started successfully for host: $HOST"
+echo "Monitoring agent installed and started successfully with agent ID: $AGENT_ID"

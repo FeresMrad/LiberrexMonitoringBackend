@@ -3,22 +3,51 @@ import influxdb_client
 import time
 import subprocess
 import json
-import argparse
+import uuid
+import os
 from influxdb_client import Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 
+# File to store the agent ID
+AGENT_ID_FILE = "/opt/monitoring-agent/agent-id"
+
 # InfluxDB 2.x details
-url = "http://82.165.230.7:8086"  # Update with your InfluxDB 2.x URL if necessary
+url = "http://82.165.230.7:8086"
 token = "YnymHsvPMle5ppoGZKDLegZTHyypPtoJFW1sXRWdSH2paW-n24Io45vNObLHlfheaWDAT0e94OfMkRmOcRHmFw=="
 org = "liberrex"
 bucket = "metrics"
 
-# Parse command-line arguments
-parser = argparse.ArgumentParser(description="Monitoring Agent")
-parser.add_argument("--host", required=True, help="Hostname to tag metrics with")
-args = parser.parse_args()
-host = args.host
+# Try to get the agent ID from file, or generate a new one
+def get_agent_id():
+    # First check if the ID file exists
+    if os.path.exists(AGENT_ID_FILE):
+        try:
+            with open(AGENT_ID_FILE, 'r') as f:
+                agent_id = f.read().strip()
+                if agent_id:
+                    return agent_id
+        except Exception as e:
+            print(f"Error reading agent ID file: {e}")
+    
+    # If we got here, either the file doesn't exist or is empty/corrupted
+    # Generate a new agent ID
+    agent_id = str(uuid.uuid4())
+    
+    # Try to save it to the file
+    try:
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(AGENT_ID_FILE), exist_ok=True)
+        
+        with open(AGENT_ID_FILE, 'w') as f:
+            f.write(agent_id)
+    except Exception as e:
+        print(f"Error saving agent ID file: {e}")
+    
+    return agent_id
 
+# Get the agent ID - this will either retrieve existing or generate new
+host = get_agent_id()
+print(f"Using agent ID: {host}")
 
 # Initialize InfluxDB client
 client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
@@ -48,18 +77,14 @@ def collect_ssh_sessions():
             return []
 
         stdout_text = stdout.decode('utf-8')
-        #print(f"Raw 'who' output: {stdout_text}")  # Debug output
 
         sessions = []
         for line in stdout_text.splitlines():
             if not line.strip():
                 continue
 
-            #print(f"Processing line: {line}")  # Debug output
-
             # Split the line into parts
             parts = line.split()
-            #print(f"Parts: {parts}")  # Debug output
 
             # The 'who' command output format might vary, we need to be more flexible
             if len(parts) >= 3:  # At minimum we need username, tty, and time
@@ -91,10 +116,8 @@ def collect_ssh_sessions():
                         'login_time': login_time
                     }
 
-                    #print(f"Found session: {session}")  # Debug output
                     sessions.append(session)
 
-        #print(f"Total sessions found: {len(sessions)}")  # Debug output
         return sessions
     except Exception as e:
         print(f"Error collecting SSH sessions: {e}")
@@ -133,7 +156,6 @@ def collect_metrics():
         Point("uptime").tag("host", host).field("uptime_seconds", uptime_seconds)
     ]
 
-    # Add SSH sessions point if there are any sessions
     # Always send the SSH sessions point, even if empty
     ssh_point = Point("ssh_sessions").tag("host", host)
     ssh_point.field("active_count", len(ssh_sessions))
