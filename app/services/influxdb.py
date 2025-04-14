@@ -111,3 +111,28 @@ def fetch_host_metric(host, measurement, field, retries=3):
             time.sleep(1)
 
     return 0  # Default value if all retries fail
+
+def write_to_influxdb(line):
+    """Write data to InfluxDB using line protocol.
+    
+    Args:
+        line: The line protocol string to write
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        response = requests.post(
+            f"{current_app.config['INFLUXDB_URL']}/write",
+            params={
+                "db": current_app.config['INFLUXDB_DATABASE'],
+                "u": current_app.config['INFLUXDB_USER'],
+                "p": current_app.config['INFLUXDB_PASSWORD'],
+            },
+            data=line
+        )
+        response.raise_for_status()  # Raise exception for HTTP errors
+        return True
+    except requests.exceptions.RequestException as e:
+        current_app.logger.error(f"Error writing to InfluxDB: {e}")
+        return False

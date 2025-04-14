@@ -164,6 +164,41 @@ def get_hosts():
 
     return jsonify(hosts_data)
 
+@api_bp.route('/hosts/name', methods=['POST'])
+def update_host_name():
+    """Update the custom name for a host."""
+    from app.services.influxdb import write_to_influxdb
+    
+    data = request.get_json()
+    host_id = data.get('hostId')
+    custom_name = data.get('customName', '')
+    
+    if not host_id:
+        return jsonify({"error": "Host ID is required"}), 400
+    
+    try:
+        # Format the string value properly for line protocol
+        # String values need to be enclosed in double quotes
+        formatted_custom_name = f'"{custom_name}"' if custom_name else '""'
+        
+        # Construct the line protocol format for InfluxDB v1
+        line = f"custom_data,host={host_id} custom_name={formatted_custom_name}"
+        
+        # Write to InfluxDB
+        success = write_to_influxdb(line)
+        
+        if not success:
+            return jsonify({"error": "Failed to update host name"}), 500
+        
+        return jsonify({
+            "success": True,
+            "message": "Host name updated successfully",
+            "host": host_id,
+            "customName": custom_name
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error updating host name: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # Metrics API Routes
 @api_bp.route('/metrics/<measurement>', methods=['GET'])
