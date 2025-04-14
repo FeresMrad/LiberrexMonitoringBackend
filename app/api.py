@@ -200,6 +200,34 @@ def update_host_name():
         current_app.logger.error(f"Error updating host name: {e}")
         return jsonify({"error": str(e)}), 500
 
+# Add this endpoint to your app/api.py file
+
+@api_bp.route('/hosts/<host_id>', methods=['DELETE'])
+def delete_host(host_id):
+    """Delete a host and all its data from InfluxDB."""
+    if not host_id:
+        return jsonify({"error": "Host ID is required"}), 400
+    
+    try:
+        # Delete data from all measurements for this host
+        measurements = [
+            "cpu", "memory", "disk", "network", "uptime", 
+            "ssh_sessions", "custom_data"
+        ]
+        
+        for measurement in measurements:
+            # For InfluxDB 1.x, we use DROP SERIES to delete points
+            query = f'DROP SERIES FROM "{measurement}" WHERE "host" = \'{host_id}\''
+            query_influxdb(query)
+        
+        return jsonify({
+            "success": True,
+            "message": f"Host '{host_id}' and all associated data successfully deleted"
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error deleting host {host_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # Metrics API Routes
 @api_bp.route('/metrics/<measurement>', methods=['GET'])
 def get_metrics(measurement):
