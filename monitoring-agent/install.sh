@@ -59,13 +59,16 @@ EOL
 # Add configuration to rsyslog if not already present
 echo "# Checking and configuring rsyslog for remote logging"
 
-# Check if LocalHostName line exists
-if ! grep -q "^\$LocalHostName $AGENT_ID" /etc/rsyslog.conf; then
-    echo "\$LocalHostName $AGENT_ID" >> /etc/rsyslog.conf
-    echo "Added LocalHostName configuration to rsyslog"
-else
-    echo "LocalHostName already configured in rsyslog"
+# Remove any existing LocalHostName lines
+if grep -q "^\$LocalHostName" /etc/rsyslog.conf; then
+    # Use sed to remove any existing LocalHostName lines
+    sed -i '/^\$LocalHostName/d' /etc/rsyslog.conf
+    echo "Removed existing LocalHostName configuration"
 fi
+
+# Now add the new LocalHostName line
+echo "\$LocalHostName $AGENT_ID" >> /etc/rsyslog.conf
+echo "Added LocalHostName configuration to rsyslog"
 
 # Check if forwarding rule exists
 if ! grep -q "^\*\.\*  @@82\.165\.230\.7:29514" /etc/rsyslog.conf; then
