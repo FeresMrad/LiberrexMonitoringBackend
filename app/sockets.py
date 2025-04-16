@@ -2,6 +2,7 @@
 from flask import request
 from flask_socketio import join_room, leave_room, disconnect
 from app.auth import validate_token
+from app.users import can_access_host
 
 def register_socket_events(socketio, host_subscribers):
     """Register Socket.IO event handlers with the socketio instance."""
@@ -43,6 +44,12 @@ def register_socket_events(socketio, host_subscribers):
         """Handle client subscription to a host."""
         host = data.get('host')
         if not host:
+            return
+        
+        # Check if user has permission to access this host
+        user_id = getattr(request, 'socket_user', {}).get('user_id')
+        if not user_id or not can_access_host(user_id, host):
+            print(f'Client {request.sid} ({user_id}) attempted to subscribe to host {host} without permission')
             return
         
         # Add client to host room

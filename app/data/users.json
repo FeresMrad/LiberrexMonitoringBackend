@@ -1,0 +1,34 @@
+{
+    "admin": {
+        "id": "admin",
+        "email": "admin@example.com",
+        "password_hash": "scrypt:32768:8:1$xluDBX8UiXEl4TrJ$243fee9782cadcef37e8598139867afd95ce8e13faeec35f11d30351356149ef573b38b2ef1eb735cb6848d61455c3b7bb22ce2605d9bd237b57fc03c2985716",
+        "role": "admin",
+        "name": "Administrator",
+        "permissions": {
+            "hosts": "*"
+        }
+    },
+    "user": {
+        "id": "user",
+        "email": "user@example.com",
+        "password_hash": "scrypt:32768:8:1$A9a7s3bK88y5YM2n$f5dbcad81bb25a09987566893f03a7c396e7ff184a59ce1d3e776a0146bf271b6db03f8785b7d3128a2b507724f766f1ac8280c1258782d5f66dd2e47bc36208",
+        "role": "user",
+        "name": "Regular User",
+        "permissions": {
+            "hosts": [
+                "monitoring_server"
+            ]
+        }
+    },
+    "e557304c-3b4e-4838-8864-72509f2eccca": {
+        "id": "e557304c-3b4e-4838-8864-72509f2eccca",
+        "email": "user1@example.com",
+        "password_hash": "scrypt:32768:8:1$umW0tsJoWK6KDzzx$f74e65ed3f7892d0aef8fb9b5c817835a0704a8c8875ea75c4c2f3456281b1e420c0cd536ad392dac000d5855973a0e996db6743cb16aa631549abde79708ed1",
+        "role": "user",
+        "name": "user1",
+        "permissions": {
+            "hosts": []
+        }
+    }
+}

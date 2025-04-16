@@ -12,6 +12,7 @@ from .logs import logs_bp
 from .ssh import ssh_bp
 from .uptime import uptime_bp
 from .debug import debug_bp
+from .users import users_bp  # Import the new users blueprint
 
 # Register all sub-blueprints
 api_bp.register_blueprint(auth_bp)
@@ -21,6 +22,7 @@ api_bp.register_blueprint(logs_bp)
 api_bp.register_blueprint(ssh_bp)
 api_bp.register_blueprint(uptime_bp)
 api_bp.register_blueprint(debug_bp)
+api_bp.register_blueprint(users_bp)  # Register the new users blueprint
 
 # Export the utility functions for use elsewhere
 from .utils import parse_time_parameters, format_time_range_params

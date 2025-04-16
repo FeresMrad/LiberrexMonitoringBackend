@@ -1,6 +1,6 @@
 """Authentication-related API endpoints."""
 from flask import Blueprint, jsonify, request
-from app.auth import authenticate_user, generate_token, validate_token
+from app.auth import authenticate_user, generate_token, validate_token, get_user_by_id
 
 # Create a blueprint for auth endpoints
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -20,12 +20,20 @@ def login():
     if not success:
         return jsonify({'error': 'Invalid credentials'}), 401
     
+    # Get the full user object to generate token
+    user = get_user_by_id(user_data['id'])
+    
     # Generate JWT token with user info
-    token = generate_token(user_data['email'])
+    token = generate_token(user)
     
     return jsonify({
         'token': token,
-        'email': user_data['email']
+        'user': {
+            'id': user_data['id'],
+            'email': user_data['email'],
+            'name': user_data.get('name', ''),
+            'role': user_data.get('role', 'user')
+        }
     })
 
 @auth_bp.route('/validate', methods=['POST', 'OPTIONS'])
@@ -47,8 +55,12 @@ def validate_token_endpoint():
     if not payload:
         return jsonify({'error': 'Invalid token'}), 401
     
-    # Return user data from token - simplified
+    # Return user data from token
     return jsonify({
         'valid': True,
-        'email': payload['user_id']
+        'user': {
+            'id': payload.get('user_id'),
+            'email': payload.get('email'),
+            'role': payload.get('role', 'user')
+        }
     })
