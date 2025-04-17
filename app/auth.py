@@ -172,7 +172,7 @@ def get_all_hosts():
 
 def get_accessible_hosts(user_id):
     """
-    Get the list of hosts a user can access.
+    Get the list of hosts a user can access, including through groups.
     
     Args:
         user_id: The user ID
@@ -180,6 +180,8 @@ def get_accessible_hosts(user_id):
     Returns:
         list: List of hosts the user can access
     """
+    from app.groups import get_all_groups
+    
     user = get_user_by_id(user_id)
     
     if not user:
@@ -189,9 +191,58 @@ def get_accessible_hosts(user_id):
     if user.get('role') == 'admin' or user.get('permissions', {}).get('hosts') == '*':
         return get_all_hosts()
     
-    # Return only the hosts the user has explicit access to
-    # that actually exist in the system
+    # Get all hosts the user has direct access to
     all_hosts = get_all_hosts()
-    user_hosts = user.get('permissions', {}).get('hosts', [])
+    direct_access_hosts = user.get('permissions', {}).get('hosts', [])
     
-    return [host for host in all_hosts if host in user_hosts]
+    # Get hosts accessible through groups
+    group_access_hosts = []
+    user_groups = user.get('permissions', {}).get('groups', [])
+    
+    if user_groups:
+        all_groups = get_all_groups()
+        for group_id in user_groups:
+            if group_id in all_groups:
+                group_hosts = all_groups[group_id].get('hosts', [])
+                group_access_hosts.extend(group_hosts)
+    
+    # Combine direct access and group access hosts
+    accessible_hosts = list(set(direct_access_hosts + group_access_hosts))
+    
+    # Return only the hosts that actually exist in the system
+    return [host for host in all_hosts if host in accessible_hosts]
+
+
+def can_access_host(user_id, host_id):
+    """Check if a user can access a specific host."""
+    from app.groups import get_host_groups
+    
+    user = get_user_by_id(user_id)
+    
+    if not user:
+        return False
+    
+    # Admin role has access to everything
+    if user.get('role') == 'admin':
+        return True
+    
+    # Check for wildcard access
+    if user.get('permissions', {}).get('hosts') == '*':
+        return True
+    
+    # Check for specific host access
+    if host_id in user.get('permissions', {}).get('hosts', []):
+        return True
+    
+    # Check for access through groups
+    user_groups = user.get('permissions', {}).get('groups', [])
+    if user_groups:
+        # Get all groups this host belongs to
+        host_groups = get_host_groups(host_id)
+        
+        # Check if any of the user's groups contain this host
+        for group in host_groups:
+            if group['id'] in user_groups:
+                return True
+    
+    return False

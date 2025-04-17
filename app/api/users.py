@@ -170,18 +170,53 @@ def get_available_hosts():
     user = get_user_by_id(user_id)
     is_admin = user.get('role') == 'admin'
     
+    # Get the groups that the user has access to
+    user_groups = user.get('permissions', {}).get('groups', [])
+    
     # Determine host access
     host_access = []
     
     if is_admin or user.get('permissions', {}).get('hosts') == '*':
         # Admin or wildcard access - all hosts are accessible
-        host_access = [{"host": host, "access": True} for host in all_hosts]
+        host_access = [{"host": host, "access": True, "accessType": "direct"} for host in all_hosts]
     else:
         # Regular user - check access for each host
-        accessible_hosts = user.get('permissions', {}).get('hosts', [])
-        host_access = [
-            {"host": host, "access": host in accessible_hosts} 
-            for host in all_hosts
-        ]
+        direct_access_hosts = user.get('permissions', {}).get('hosts', [])
+        
+        # Get hosts accessible through groups
+        from app.groups import get_host_groups
+        
+        for host in all_hosts:
+            # Check direct access
+            if host in direct_access_hosts:
+                host_access.append({
+                    "host": host, 
+                    "access": True,
+                    "accessType": "direct"
+                })
+                continue
+            
+            # Check access through groups
+            host_groups = get_host_groups(host)
+            group_access = False
+            for group in host_groups:
+                if group['id'] in user_groups:
+                    host_access.append({
+                        "host": host, 
+                        "access": True,
+                        "accessType": "group",
+                        "groupId": group['id'],
+                        "groupName": group['name']
+                    })
+                    group_access = True
+                    break
+            
+            # No access
+            if not group_access and host not in direct_access_hosts:
+                host_access.append({
+                    "host": host, 
+                    "access": False,
+                    "accessType": "none"
+                })
     
     return jsonify(host_access)

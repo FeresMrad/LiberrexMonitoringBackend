@@ -17,10 +17,10 @@
         "name": "user",
         "permissions": {
             "hosts": [
-                "b1b58713-6e37-4806-b7da-5ffc3f115029",
-                "f5e068b4-6971-428a-b98f-1499c9e88749",
-                "887ba38d-44e4-47c5-93ae-89d65e470dfc"
-            ]
+                "887ba38d-44e4-47c5-93ae-89d65e470dfc",
+                "b1b58713-6e37-4806-b7da-5ffc3f115029"
+            ],
+            "groups": []
         }
     },
     "78cc5686-bbf1-4f9f-a2c5-6cf8679531f2": {

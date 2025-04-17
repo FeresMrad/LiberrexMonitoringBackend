@@ -265,11 +265,15 @@ def update_user_permissions(user_id, permissions, modifier_id=None):
     
     # Admin users always get full access
     if users[user_id].get('role') == 'admin':
-        permissions = {'hosts': '*'}
+        permissions = {'hosts': '*', 'groups': []}
     
     # Validate host list - ensure it's a list or wildcard
     if permissions.get('hosts') != '*' and not isinstance(permissions.get('hosts'), list):
         permissions['hosts'] = []
+    
+    # Validate groups list - ensure it's a list
+    if not isinstance(permissions.get('groups'), list):
+        permissions['groups'] = []
     
     users[user_id]['permissions'] = permissions
     save_users(users)
