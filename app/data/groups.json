@@ -1,0 +1,16 @@
+{
+    "default": {
+        "id": "default",
+        "name": "Default Group",
+        "description": "Default group for all hosts",
+        "hosts": [],
+        "color": "#1890ff"
+    },
+    "5d0806c0-ecc4-41a8-8dff-68c51e3f7d34": {
+        "id": "5d0806c0-ecc4-41a8-8dff-68c51e3f7d34",
+        "name": "group1",
+        "description": "",
+        "hosts": [],
+        "color": "#1890ff"
+    }
+}

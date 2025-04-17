@@ -16,21 +16,10 @@
         "role": "user",
         "name": "user",
         "permissions": {
-            "hosts": "*"
-        }
-    },
-    "e557304c-3b4e-4838-8864-72509f2eccca": {
-        "id": "e557304c-3b4e-4838-8864-72509f2eccca",
-        "email": "user1@example.com",
-        "password_hash": "scrypt:32768:8:1$umW0tsJoWK6KDzzx$f74e65ed3f7892d0aef8fb9b5c817835a0704a8c8875ea75c4c2f3456281b1e420c0cd536ad392dac000d5855973a0e996db6743cb16aa631549abde79708ed1",
-        "role": "user",
-        "name": "user1",
-        "permissions": {
             "hosts": [
                 "b1b58713-6e37-4806-b7da-5ffc3f115029",
                 "f5e068b4-6971-428a-b98f-1499c9e88749",
-                "monitoring_server",
-                "remote_machine"
+                "887ba38d-44e4-47c5-93ae-89d65e470dfc"
             ]
         }
     },
