@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request
 from app.users import (
     get_all_users, get_user_by_id, create_user, update_user, 
-    delete_user, update_user_permissions
+    delete_user, update_user_permissions, SUPER_ADMIN_ID
 )
 from app.auth import require_admin, require_auth, get_all_hosts
 
@@ -61,8 +61,11 @@ def add_user():
     if role not in ['admin', 'user']:
         return jsonify({"error": "Invalid role"}), 400
     
+    # Get the creator ID for permission checks
+    creator_id = request.user.get('user_id')
+    
     # Create user
-    success, result = create_user(email, password, name, role, permissions)
+    success, result = create_user(email, password, name, role, permissions, creator_id)
     
     if not success:
         return jsonify({"error": result}), 400
@@ -83,8 +86,11 @@ def update_user_info(user_id):
     if not user:
         return jsonify({"error": "User not found"}), 404
     
+    # Get the modifier ID for permission checks
+    modifier_id = request.user.get('user_id')
+    
     # Update user
-    success, message = update_user(user_id, data)
+    success, message = update_user(user_id, data, modifier_id)
     
     if not success:
         return jsonify({"error": message}), 400
@@ -95,7 +101,10 @@ def update_user_info(user_id):
 @require_admin
 def remove_user(user_id):
     """Delete a user (admin only)."""
-    success, message = delete_user(user_id)
+    # Get the deleter ID for permission checks
+    deleter_id = request.user.get('user_id')
+    
+    success, message = delete_user(user_id, deleter_id)
     
     if not success:
         return jsonify({"error": message}), 400
@@ -116,8 +125,11 @@ def set_user_permissions(user_id):
     if not user:
         return jsonify({"error": "User not found"}), 404
     
+    # Get the modifier ID for permission checks
+    modifier_id = request.user.get('user_id')
+    
     # Update permissions
-    success, message = update_user_permissions(user_id, data)
+    success, message = update_user_permissions(user_id, data, modifier_id)
     
     if not success:
         return jsonify({"error": message}), 400
@@ -139,7 +151,8 @@ def get_current_user():
         "id": user.get('id'),
         "email": user.get('email'),
         "name": user.get('name'),
-        "role": user.get('role')
+        "role": user.get('role'),
+        "isSuperAdmin": user_id == SUPER_ADMIN_ID  # Add this flag for frontend checking
     }
     
     return jsonify(user_data)

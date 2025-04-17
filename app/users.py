@@ -8,9 +8,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # Path to the users file
 USERS_FILE = os.path.join('app', 'data', 'users.json')
 
+# Constant for super admin ID - explicitly defined for security checks
+SUPER_ADMIN_ID = "admin"
+
 # Default admin user
 DEFAULT_ADMIN = {
-    "id": "admin",
+    "id": SUPER_ADMIN_ID,
     "email": "admin@example.com",
     "password_hash": generate_password_hash("adminpass"),
     "role": "admin",
@@ -40,7 +43,7 @@ def ensure_users_file():
     # If users file doesn't exist, create it with default users
     if not os.path.exists(USERS_FILE):
         default_users = {
-            "admin": DEFAULT_ADMIN,
+            SUPER_ADMIN_ID: DEFAULT_ADMIN,
             "user": DEFAULT_USER
         }
         
@@ -88,11 +91,29 @@ def get_user_by_id(user_id):
     users = load_users()
     return users.get(user_id)
 
-def create_user(email, password, name, role="user", permissions=None):
-    """Create a new user."""
+def is_super_admin(user_id):
+    """Check if a user is the super admin."""
+    return user_id == SUPER_ADMIN_ID
+
+def create_user(email, password, name, role="user", permissions=None, creator_id=None):
+    """
+    Create a new user.
+    
+    Args:
+        email: User's email address
+        password: User's password
+        name: User's display name
+        role: User's role (user/admin)
+        permissions: User's permissions
+        creator_id: ID of the user creating this user (for permission checks)
+    """
     # Check if email is already in use
     if get_user_by_email(email):
         return False, "Email already in use"
+    
+    # Only super admin can create admin users
+    if role == "admin" and creator_id != SUPER_ADMIN_ID:
+        return False, "Only the super administrator can create admin accounts"
     
     # Generate a unique ID
     user_id = str(uuid.uuid4())
@@ -100,6 +121,10 @@ def create_user(email, password, name, role="user", permissions=None):
     # Set default permissions if none provided
     if permissions is None:
         permissions = {"hosts": []}
+    
+    # Enforce permission structure based on role
+    if role == "admin" and permissions.get("hosts") != "*":
+        permissions["hosts"] = "*"  # Admin always gets full access
     
     # Create user object
     new_user = {
@@ -118,8 +143,15 @@ def create_user(email, password, name, role="user", permissions=None):
     
     return True, user_id
 
-def update_user(user_id, updates):
-    """Update a user's information."""
+def update_user(user_id, updates, modifier_id=None):
+    """
+    Update a user's information.
+    
+    Args:
+        user_id: ID of the user to update
+        updates: Dictionary of fields to update
+        modifier_id: ID of the user making the change (for permission checks)
+    """
     users = load_users()
     
     if user_id not in users:
@@ -127,8 +159,28 @@ def update_user(user_id, updates):
     
     user = users[user_id]
     
+    # Super admin protection
+    if user_id == SUPER_ADMIN_ID:
+        return False, "The super administrator account cannot be modified"
+    
+    # Only super admin can modify other admin accounts
+    if user.get('role') == 'admin' and modifier_id != SUPER_ADMIN_ID:
+        return False, "Only the super administrator can modify admin accounts"
+    
+    # Create a copy of the updates to avoid modifying the original
+    safe_updates = updates.copy()
+    
+    # Handle role changes and enforce permission consistency
+    if 'role' in safe_updates:
+        # If user is becoming an admin, grant full permissions
+        if safe_updates['role'] == 'admin':
+            if 'permissions' not in safe_updates:
+                safe_updates['permissions'] = {'hosts': '*'}
+            else:
+                safe_updates['permissions']['hosts'] = '*'
+    
     # Update user fields
-    for field, value in updates.items():
+    for field, value in safe_updates.items():
         if field == 'password':
             user['password_hash'] = generate_password_hash(value)
         elif field != 'password_hash' and field != 'id':  # Don't allow direct password_hash or id changes
@@ -137,12 +189,26 @@ def update_user(user_id, updates):
     save_users(users)
     return True, "User updated successfully"
 
-def delete_user(user_id):
-    """Delete a user."""
+def delete_user(user_id, deleter_id=None):
+    """
+    Delete a user.
+    
+    Args:
+        user_id: ID of the user to delete
+        deleter_id: ID of the user performing the deletion (for permission checks)
+    """
     users = load_users()
     
     if user_id not in users:
         return False, "User not found"
+    
+    # Super admin protection
+    if user_id == SUPER_ADMIN_ID:
+        return False, "The super administrator account cannot be deleted"
+    
+    # Only super admin can delete admin accounts
+    if users[user_id].get('role') == 'admin' and deleter_id != SUPER_ADMIN_ID:
+        return False, "Only the super administrator can delete admin accounts"
     
     # Prevent deleting the last admin
     if users[user_id].get('role') == 'admin':
@@ -175,12 +241,35 @@ def get_user_permissions(user_id):
     
     return user.get('permissions', {})
 
-def update_user_permissions(user_id, permissions):
-    """Update a user's permissions."""
+def update_user_permissions(user_id, permissions, modifier_id=None):
+    """
+    Update a user's permissions.
+    
+    Args:
+        user_id: ID of the user to update
+        permissions: New permissions
+        modifier_id: ID of the user making the change (for permission checks)
+    """
     users = load_users()
     
     if user_id not in users:
         return False, "User not found"
+    
+    # Super admin protection
+    if user_id == SUPER_ADMIN_ID:
+        return False, "The super administrator's permissions cannot be modified"
+    
+    # Only super admin can modify admin permissions
+    if users[user_id].get('role') == 'admin' and modifier_id != SUPER_ADMIN_ID:
+        return False, "Only the super administrator can modify admin permissions"
+    
+    # Admin users always get full access
+    if users[user_id].get('role') == 'admin':
+        permissions = {'hosts': '*'}
+    
+    # Validate host list - ensure it's a list or wildcard
+    if permissions.get('hosts') != '*' and not isinstance(permissions.get('hosts'), list):
+        permissions['hosts'] = []
     
     users[user_id]['permissions'] = permissions
     save_users(users)

@@ -41,7 +41,7 @@
         "role": "admin",
         "name": "admin2",
         "permissions": {
-            "hosts": []
+            "hosts": "*"
         }
     }
 }
