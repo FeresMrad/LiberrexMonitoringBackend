@@ -150,10 +150,6 @@ def delete_group(group_id):
     if group_id not in groups:
         return False, "Group not found"
     
-    # Don't allow deleting the default group
-    if group_id == "default":
-        return False, "Cannot delete the default group"
-    
     del groups[group_id]
     save_groups(groups)
     return True, "Group deleted successfully"
