@@ -20,8 +20,7 @@ def ensure_groups_file():
                 "id": "default",
                 "name": "Default Group",
                 "description": "Default group for all hosts",
-                "hosts": [],
-                "color": "#1890ff"  # Blue color
+                "hosts": []
             }
         }
         
@@ -73,7 +72,7 @@ def get_group_by_name(name):
     
     return None
 
-def create_group(name, description=None, hosts=None, color=None):
+def create_group(name, description=None, hosts=None):
     """
     Create a new host group.
     
@@ -81,7 +80,6 @@ def create_group(name, description=None, hosts=None, color=None):
         name: Group name
         description: Group description
         hosts: List of host IDs in the group
-        color: Color code for the group (for UI representation)
     """
     # Check if name is already in use
     if get_group_by_name(name):
@@ -95,16 +93,13 @@ def create_group(name, description=None, hosts=None, color=None):
         description = f"Group for {name}"
     if hosts is None:
         hosts = []
-    if color is None:
-        color = "#1890ff"  # Default blue color
     
     # Create group object
     new_group = {
         "id": group_id,
         "name": name,
         "description": description,
-        "hosts": hosts,
-        "color": color
+        "hosts": hosts
     }
     
     # Add group to groups dictionary

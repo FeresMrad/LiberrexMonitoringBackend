@@ -45,10 +45,9 @@ def add_group():
     # Optional fields
     description = data.get('description')
     hosts = data.get('hosts', [])
-    color = data.get('color')
     
     # Create group
-    success, result = create_group(name, description, hosts, color)
+    success, result = create_group(name, description, hosts)
     
     if not success:
         return jsonify({"error": result}), 400
