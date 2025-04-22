@@ -16,10 +16,7 @@
         "role": "user",
         "name": "user",
         "permissions": {
-            "hosts": [
-                "887ba38d-44e4-47c5-93ae-89d65e470dfc",
-                "b1b58713-6e37-4806-b7da-5ffc3f115029"
-            ],
+            "hosts": "*",
             "groups": []
         }
     },
