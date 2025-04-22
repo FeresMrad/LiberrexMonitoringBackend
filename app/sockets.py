@@ -1,5 +1,5 @@
 """Socket.IO event handlers with JWT authentication."""
-from flask import request
+from flask import request, session
 from flask_socketio import join_room, leave_room, disconnect
 from app.auth import validate_token
 from app.users import can_access_host
@@ -23,15 +23,21 @@ def register_socket_events(socketio, host_subscribers):
             disconnect()
             return False
         
-        # Store user data
-        request.socket_user = payload
+        # Store user data in a socket-specific dictionary instead
+        socketio.server.environ[request.sid] = {'user': payload}
         print(f'Client {request.sid} connected as {payload["user_id"]}')
 
     @socketio.on('disconnect')
     def handle_disconnect():
         """Handle client disconnection."""
-        user_id = getattr(request, 'socket_user', {}).get('user_id', 'unknown')
+        # Get user data from socketio.server.environ
+        user_data = socketio.server.environ.get(request.sid, {}).get('user', {})
+        user_id = user_data.get('user_id', 'unknown')
         print(f'Client {request.sid} ({user_id}) disconnected')
+
+        # Clean up user data
+        if request.sid in socketio.server.environ:
+            del socketio.server.environ[request.sid]
 
         # Clean up subscriptions for this socket
         for host in list(host_subscribers.keys()):
@@ -46,8 +52,10 @@ def register_socket_events(socketio, host_subscribers):
         if not host:
             return
         
-        # Check if user has permission to access this host
-        user_id = getattr(request, 'socket_user', {}).get('user_id')
+        # Get user data from socketio.server.environ
+        user_data = socketio.server.environ.get(request.sid, {}).get('user', {})
+        user_id = user_data.get('user_id')
+        
         if not user_id or not can_access_host(user_id, host):
             print(f'Client {request.sid} ({user_id}) attempted to subscribe to host {host} without permission')
             return
@@ -58,7 +66,6 @@ def register_socket_events(socketio, host_subscribers):
         # Add client to subscribers list - simplified
         host_subscribers.setdefault(host, set()).add(request.sid)
 
-        user_id = getattr(request, 'socket_user', {}).get('user_id', 'unknown')
         print(f'Client {request.sid} ({user_id}) subscribed to host {host}')
 
     @socketio.on('unsubscribe')
@@ -75,5 +82,7 @@ def register_socket_events(socketio, host_subscribers):
         if host in host_subscribers and request.sid in host_subscribers[host]:
             host_subscribers[host].remove(request.sid)
 
-        user_id = getattr(request, 'socket_user', {}).get('user_id', 'unknown')
+        # Get user data from socketio.server.environ
+        user_data = socketio.server.environ.get(request.sid, {}).get('user', {})
+        user_id = user_data.get('user_id', 'unknown')
         print(f'Client {request.sid} ({user_id}) unsubscribed from host {host}')
