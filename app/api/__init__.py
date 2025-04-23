@@ -13,7 +13,8 @@ from .ssh import ssh_bp
 from .uptime import uptime_bp
 from .debug import debug_bp
 from .users import users_bp
-from .groups import groups_bp  # Import the new groups blueprint
+from .groups import groups_bp
+from .apache import apache_bp  # Import the new apache blueprint
 
 # Register all sub-blueprints
 api_bp.register_blueprint(auth_bp)
@@ -24,7 +25,8 @@ api_bp.register_blueprint(ssh_bp)
 api_bp.register_blueprint(uptime_bp)
 api_bp.register_blueprint(debug_bp)
 api_bp.register_blueprint(users_bp)
-api_bp.register_blueprint(groups_bp)  # Register the new groups blueprint
+api_bp.register_blueprint(groups_bp)
+api_bp.register_blueprint(apache_bp)  # Register the new apache blueprint
 
 # Export the utility functions for use elsewhere
 from .utils import parse_time_parameters, format_time_range_params
