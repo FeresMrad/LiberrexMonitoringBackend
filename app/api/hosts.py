@@ -12,6 +12,16 @@ def get_hosts():
     query = 'SHOW TAG VALUES WITH KEY = "host"'
     response = query_influxdb(query)
 
+    # Create a set to store all unique hosts
+    all_host_names = set()
+
+    # Process ALL series from ALL measurements
+    if response["results"][0].get("series"):
+        for series in response["results"][0]["series"]:
+            for item in series["values"]:
+                host_name = item[1]
+                all_host_names.add(host_name)  # Collect all unique host names
+
     hosts_data = []
 
     # Fetch custom names in a separate query
@@ -27,49 +37,47 @@ def get_hosts():
                 custom_name = series["values"][0][1] if series["values"][0][1] is not None else ""
                 custom_names[host_tag] = custom_name
 
-    if response["results"][0].get("series"):
-        for item in response["results"][0]["series"][0]["values"]:
-            host_name = item[1]
+    # Process each unique host we found
+    for host_name in all_host_names:
+        # Fetch host metrics
+        host_data = {
+            "name": host_name,
+            "customName": custom_names.get(host_name, ""),  # Add custom name here
+            "ip": fetch_host_metric(host_name, "network", "ip_adr"),
+            "cpuUsage": fetch_host_metric(host_name, "cpu", "percent"),
+            "memoryUsage": fetch_host_metric(host_name, "memory", "percent"),
+            "diskUsage": fetch_host_metric(host_name, "disk", "percent"),
+            "systemBoot": "Unknown"
+        }
 
-            # Fetch host metrics
-            host_data = {
-                "name": host_name,
-                "customName": custom_names.get(host_name, ""),  # Add custom name here
-                "ip": fetch_host_metric(host_name, "network", "ip_adr"),
-                "cpuUsage": fetch_host_metric(host_name, "cpu", "percent"),
-                "memoryUsage": fetch_host_metric(host_name, "memory", "percent"),
-                "diskUsage": fetch_host_metric(host_name, "disk", "percent"),
-                "systemBoot": "Unknown"
+        # Fetch uptime
+        uptime_query = f'SELECT "uptime_seconds" FROM "uptime" WHERE "host" = \'{host_name}\' ORDER BY time DESC LIMIT 1'
+        uptime_response = query_influxdb(uptime_query)
+
+        activity = {"isDown": True, "timestamp": "Unknown"}
+
+        if uptime_response["results"][0].get("series"):
+            values = uptime_response["results"][0]["series"][0]["values"][0]
+            # Convert to timezone-aware datetime
+            last_timestamp = datetime.fromisoformat(values[0].replace('Z', '+00:00'))
+            uptime_seconds = values[1]
+
+            # Make current_time timezone-aware (UTC)
+            current_time = datetime.now(timezone.utc)
+
+            time_diff = (current_time - last_timestamp).total_seconds()
+
+            # Calculate system boot time
+            boot_time = current_time.timestamp() - uptime_seconds
+            host_data["systemBoot"] = datetime.fromtimestamp(boot_time).strftime('%d/%m/%Y, %H:%M:%S')
+
+            activity = {
+                "isDown": time_diff > 61,
+                "timestamp": last_timestamp.strftime('%d/%m/%Y, %H:%M:%S') if time_diff > 61 else None
             }
 
-            # Fetch uptime
-            uptime_query = f'SELECT "uptime_seconds" FROM "uptime" WHERE "host" = \'{host_name}\' ORDER BY time DESC LIMIT 1'
-            uptime_response = query_influxdb(uptime_query)
-
-            activity = {"isDown": True, "timestamp": "Unknown"}
-
-            if uptime_response["results"][0].get("series"):
-                values = uptime_response["results"][0]["series"][0]["values"][0]
-                # Convert to timezone-aware datetime
-                last_timestamp = datetime.fromisoformat(values[0].replace('Z', '+00:00'))
-                uptime_seconds = values[1]
-
-                # Make current_time timezone-aware (UTC)
-                current_time = datetime.now(timezone.utc)
-
-                time_diff = (current_time - last_timestamp).total_seconds()
-
-                # Calculate system boot time
-                boot_time = current_time.timestamp() - uptime_seconds
-                host_data["systemBoot"] = datetime.fromtimestamp(boot_time).strftime('%d/%m/%Y, %H:%M:%S')
-
-                activity = {
-                    "isDown": time_diff > 61,
-                    "timestamp": last_timestamp.strftime('%d/%m/%Y, %H:%M:%S') if time_diff > 61 else None
-                }
-
-            host_data["activity"] = activity
-            hosts_data.append(host_data)
+        host_data["activity"] = activity
+        hosts_data.append(host_data)
 
     return jsonify(hosts_data)
 
@@ -117,7 +125,8 @@ def delete_host(host_id):
         # Delete data from all measurements for this host
         measurements = [
             "cpu", "memory", "disk", "network", "uptime", 
-            "ssh_sessions", "custom_data"
+            "ssh_sessions", "custom_data", "apache_raw", 
+            "apache_interval", "apache_health"
         ]
         
         for measurement in measurements:
