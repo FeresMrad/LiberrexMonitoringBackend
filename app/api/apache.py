@@ -217,3 +217,80 @@ def get_apache_bpr():
     results.sort(key=lambda x: x["time"])
     
     return jsonify(results)
+
+@apache_bp.route('/bps', methods=['GET'])
+def get_apache_bps():
+    """Get Apache bytes per second metrics for a host."""
+    host = request.args.get('host')
+    
+    if not host:
+        return jsonify({"error": "Host parameter is required"}), 400
+    
+    # Parse time range parameters 
+    start, end = parse_time_parameters(request)
+    
+    # Build queries for both apache_raw and apache_interval
+    raw_query = f'SELECT "bytes_per_sec" FROM "apache_raw" WHERE host=\'{host}\''
+    interval_query = f'SELECT "interval_bytes_per_sec" FROM "apache_interval" WHERE host=\'{host}\''
+    
+    # Add time range if specified
+    if start and not end:
+        # If only start is specified as a relative time (e.g., '1h')
+        raw_query += f' AND time > now() - {start}'
+        interval_query += f' AND time > now() - {start}'
+    elif start and end:
+        # If both start and end are specified as ISO timestamps
+        raw_query += f' AND time >= \'{start}\' AND time <= \'{end}\''
+        interval_query += f' AND time >= \'{start}\' AND time <= \'{end}\''
+    
+    # Add sorting
+    raw_query += ' ORDER BY time ASC'
+    interval_query += ' ORDER BY time ASC'
+    
+    # Execute queries
+    raw_response = query_influxdb(raw_query)
+    interval_response = query_influxdb(interval_query)
+    
+    # Process responses
+    results = []
+    
+    # Create a dictionary to store the time points and values
+    time_points = {}
+    
+    # Process raw data
+    if raw_response["results"][0].get("series"):
+        raw_values = raw_response["results"][0]["series"][0]["values"]
+        for value in raw_values:
+            time_str = value[0]
+            bytes_per_sec = value[1]
+            
+            if time_str not in time_points:
+                time_points[time_str] = {"time": time_str, "bytes_per_sec": bytes_per_sec}
+            else:
+                time_points[time_str]["bytes_per_sec"] = bytes_per_sec
+    
+    # Process interval data
+    if interval_response["results"][0].get("series"):
+        interval_values = interval_response["results"][0]["series"][0]["values"]
+        for value in interval_values:
+            time_str = value[0]
+            interval_bytes_per_sec = value[1]
+            
+            if time_str not in time_points:
+                time_points[time_str] = {"time": time_str, "interval_bytes_per_sec": interval_bytes_per_sec}
+            else:
+                time_points[time_str]["interval_bytes_per_sec"] = interval_bytes_per_sec
+    
+    # Convert the dictionary to a list and sort by time
+    for time_str, data in time_points.items():
+        # Ensure both metrics exist in each data point, fill with null if missing
+        if "bytes_per_sec" not in data:
+            data["bytes_per_sec"] = None
+        if "interval_bytes_per_sec" not in data:
+            data["interval_bytes_per_sec"] = None
+        results.append(data)
+    
+    # Sort by time
+    results.sort(key=lambda x: x["time"])
+    
+    return jsonify(results)
