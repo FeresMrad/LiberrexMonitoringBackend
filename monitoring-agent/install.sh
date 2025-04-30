@@ -17,8 +17,8 @@ apt install -y \
     python3-venv \
     build-essential
 
-# Create the agent directory
-mkdir -p /opt/monitoring-agent
+# Create the agent directory and subdirectories
+mkdir -p /opt/monitoring-agent/collectors
 
 # Create a virtual environment
 python3 -m venv /opt/monitoring-agent/venv
@@ -26,8 +26,16 @@ python3 -m venv /opt/monitoring-agent/venv
 # Activate virtual environment and install Python packages
 /opt/monitoring-agent/venv/bin/pip install psutil requests influxdb-client uuid
 
-# Copy agent script
-cp agent.py /opt/monitoring-agent/agent.py
+# Copy agent files
+echo "Copying agent files..."
+cp agent.py config.py agent_id.py /opt/monitoring-agent/
+cp collectors/__init__.py collectors/system.py collectors/ssh.py collectors/apache.py /opt/monitoring-agent/collectors/
+
+# Create empty __init__.py if not copied
+touch /opt/monitoring-agent/collectors/__init__.py
+
+# Set correct permissions
+chmod 755 /opt/monitoring-agent/agent.py
 
 # Generate or read agent-id for rsyslog configuration
 AGENT_ID_FILE="/opt/monitoring-agent/agent-id"
@@ -78,11 +86,72 @@ else
     echo "Remote logging already configured in rsyslog"
 fi
 
-# Restart rsyslog service only if changes were made
-if grep -q "^\$LocalHostName $AGENT_ID" /etc/rsyslog.conf && grep -q "^\*\.\*  @@82\.165\.230\.7:29514" /etc/rsyslog.conf; then
-    systemctl restart rsyslog
-    echo "Rsyslog configured and restarted for remote logging"
+# Create Apache logging configuration for rsyslog
+echo "# Setting up Apache access log monitoring with rsyslog"
+cat > /etc/rsyslog.d/apache.conf << EOL
+###############################################################################
+# 1) Load the imfile module
+###############################################################################
+module(load="imfile" PollingInterval="10")
+###############################################################################
+# 2) Watch Apache's access.log
+###############################################################################
+input(type="imfile"
+      File="/var/log/apache2/*access.log"    # the file to tail
+      Tag="apache-access:"                   # prefix you'll see in \$programname
+      Facility="local6"                      # keep it separate
+      Severity="info"
+      PersistStateInterval="200"
+)
+# Filter out server-status requests from 127.0.0.1
+if (\$programname == 'apache-access' and
+    \$msg contains '127.0.0.1' and
+    \$msg contains 'GET /server-status?auto') then {
+    stop  # drop the message, don't log or forward it
+}
+EOL
+echo "Created Apache rsyslog configuration file"
+
+# Modify Apache logging format to include response time (%D) if Apache is installed
+if [ -f "/etc/apache2/apache2.conf" ]; then
+    echo "# Modifying Apache logging format to include response time (%D)"
+    
+    # Check if LogFormat lines already include %D
+    # If not, update them
+    APACHE_MODIFIED=0
+    
+    # Update vhost_combined format
+    if grep -q 'LogFormat "%v:%p %h %l %u %t \\"%r\\" %>s %O \\"%{Referer}i\\" \\"%{User-Agent}i\\"" vhost_combined' /etc/apache2/apache2.conf; then
+        sed -i 's/LogFormat "%v:%p %h %l %u %t \\"%r\\" %>s %O \\"%{Referer}i\\" \\"%{User-Agent}i\\"" vhost_combined/LogFormat "%v:%p %h %l %u %t \\"%r\\" %>s %O %D \\"%{Referer}i\\" \\"%{User-Agent}i\\"" vhost_combined/' /etc/apache2/apache2.conf
+        APACHE_MODIFIED=1
+    fi
+    
+    # Update combined format
+    if grep -q 'LogFormat "%h %l %u %t \\"%r\\" %>s %O \\"%{Referer}i\\" \\"%{User-Agent}i\\"" combined' /etc/apache2/apache2.conf; then
+        sed -i 's/LogFormat "%h %l %u %t \\"%r\\" %>s %O \\"%{Referer}i\\" \\"%{User-Agent}i\\"" combined/LogFormat "%h %l %u %t \\"%r\\" %>s %O %D \\"%{Referer}i\\" \\"%{User-Agent}i\\"" combined/' /etc/apache2/apache2.conf
+        APACHE_MODIFIED=1
+    fi
+    
+    # Update common format
+    if grep -q 'LogFormat "%h %l %u %t \\"%r\\" %>s %O" common' /etc/apache2/apache2.conf; then
+        sed -i 's/LogFormat "%h %l %u %t \\"%r\\" %>s %O" common/LogFormat "%h %l %u %t \\"%r\\" %>s %O %D" common/' /etc/apache2/apache2.conf
+        APACHE_MODIFIED=1
+    fi
+    
+    # Restart Apache if modified
+    if [ $APACHE_MODIFIED -eq 1 ]; then
+        echo "Apache logging formats updated, restarting Apache service"
+        systemctl restart apache2
+    else
+        echo "Apache logging formats already include response time or custom format is used"
+    fi
+else
+    echo "Apache configuration not found, skipping LogFormat modifications"
 fi
+
+# Restart rsyslog service to apply all changes
+systemctl restart rsyslog
+echo "Rsyslog configured and restarted"
 
 # Reload systemd to recognize the new service
 systemctl daemon-reload
