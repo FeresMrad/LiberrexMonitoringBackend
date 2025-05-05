@@ -20,6 +20,10 @@ def create_app():
     
     # Load configuration
     app.config.from_object(get_config())
+
+    # Initialize MySQL database
+    from app import mysql
+    mysql.init_app(app)
     
     # Initialize extensions with more permissive CORS settings
     cors.init_app(app, resources={r"/api/*": {"origins": "*", "supports_credentials": True, "methods": ["GET", "POST", "OPTIONS"]}})

@@ -1,99 +1,102 @@
-"""User management module for storing and managing users in a JSON file."""
-import os
-import json
+"""User management module for storing and managing users in MySQL database."""
 import uuid
-from flask import current_app
+from flask import current_app, g
 from werkzeug.security import generate_password_hash, check_password_hash
-
-# Path to the users file
-USERS_FILE = os.path.join('app', 'data', 'users.json')
+from app.mysql import get_db
 
 # Constant for super admin ID - explicitly defined for security checks
 SUPER_ADMIN_ID = "admin"
 
-# Default admin user
-DEFAULT_ADMIN = {
-    "id": SUPER_ADMIN_ID,
-    "email": "admin@example.com",
-    "password_hash": generate_password_hash("adminpass"),
-    "role": "admin",
-    "name": "Administrator",
-    "permissions": {
-        "hosts": "*"  # Asterisk means access to all hosts
-    }
-}
-
-# Default user
-DEFAULT_USER = {
-    "id": "user",
-    "email": "user@example.com",
-    "password_hash": generate_password_hash("userpass"),
-    "role": "user",
-    "name": "Regular User",
-    "permissions": {
-        "hosts": []  # Empty list means no access to any hosts
-    }
-}
-
-def ensure_users_file():
-    """Ensure the users file exists, creating it with default users if needed."""
-    # Ensure the data directory exists
-    os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
-    
-    # If users file doesn't exist, create it with default users
-    if not os.path.exists(USERS_FILE):
-        default_users = {
-            SUPER_ADMIN_ID: DEFAULT_ADMIN,
-            "user": DEFAULT_USER
-        }
-        
-        with open(USERS_FILE, 'w') as f:
-            json.dump(default_users, f, indent=4)
-            
-        current_app.logger.info(f"Created default users file at {USERS_FILE}")
-    
-    return USERS_FILE
-
-def load_users():
-    """Load all users from the JSON file."""
-    ensure_users_file()
-    
-    try:
-        with open(USERS_FILE, 'r') as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        # If the file is corrupt, reset to defaults
-        current_app.logger.error("Users file is corrupted, resetting to defaults")
-        os.remove(USERS_FILE)
-        ensure_users_file()
-        with open(USERS_FILE, 'r') as f:
-            return json.load(f)
-
-def save_users(users):
-    """Save the users dictionary to the JSON file."""
-    ensure_users_file()
-    
-    with open(USERS_FILE, 'w') as f:
-        json.dump(users, f, indent=4)
-
 def get_user_by_email(email):
     """Get a user by their email address."""
-    users = load_users()
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
     
-    for user_id, user in users.items():
-        if user.get('email') == email:
-            return user
+    cursor.execute("""
+        SELECT u.id, u.email, u.password_hash, u.name, u.role, w.has_wildcard
+        FROM users u
+        LEFT JOIN user_wildcard_permissions w ON u.id = w.user_id
+        WHERE u.email = %s
+    """, (email,))
     
-    return None
+    user = cursor.fetchone()
+    cursor.close()
+    
+    if not user:
+        return None
+    
+    # Add permissions to user data
+    user['permissions'] = get_user_permissions(user['id'])
+    
+    return user
 
 def get_user_by_id(user_id):
     """Get a user by their ID."""
-    users = load_users()
-    return users.get(user_id)
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    cursor.execute("""
+        SELECT u.id, u.email, u.password_hash, u.name, u.role, w.has_wildcard
+        FROM users u
+        LEFT JOIN user_wildcard_permissions w ON u.id = w.user_id
+        WHERE u.id = %s
+    """, (user_id,))
+    
+    user = cursor.fetchone()
+    cursor.close()
+    
+    if not user:
+        return None
+    
+    # Add permissions to user data
+    user['permissions'] = get_user_permissions(user_id)
+    
+    return user
 
 def is_super_admin(user_id):
     """Check if a user is the super admin."""
     return user_id == SUPER_ADMIN_ID
+
+def get_user_permissions(user_id):
+    """Get a user's permissions including host and group access."""
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    # Check for wildcard permissions
+    cursor.execute("""
+        SELECT has_wildcard FROM user_wildcard_permissions
+        WHERE user_id = %s AND has_wildcard = TRUE
+    """, (user_id,))
+    
+    wildcard = cursor.fetchone()
+    
+    if wildcard:
+        # User has wildcard access to all hosts
+        permissions = {"hosts": "*", "groups": []}
+    else:
+        # Get specific host permissions
+        cursor.execute("""
+            SELECT host_id FROM user_host_permissions
+            WHERE user_id = %s
+        """, (user_id,))
+        
+        host_permissions = [row['host_id'] for row in cursor.fetchall()]
+        
+        # Get group permissions
+        cursor.execute("""
+            SELECT group_id FROM user_group_permissions
+            WHERE user_id = %s
+        """, (user_id,))
+        
+        group_permissions = [row['group_id'] for row in cursor.fetchall()]
+        
+        permissions = {
+            "hosts": host_permissions,
+            "groups": group_permissions
+        }
+    
+    cursor.close()
+    return permissions
 
 def create_user(email, password, name, role="user", permissions=None, creator_id=None):
     """
@@ -123,25 +126,60 @@ def create_user(email, password, name, role="user", permissions=None, creator_id
         permissions = {"hosts": []}
     
     # Enforce permission structure based on role
-    if role == "admin" and permissions.get("hosts") != "*":
-        permissions["hosts"] = "*"  # Admin always gets full access
+    has_wildcard = False
+    if role == "admin":
+        has_wildcard = True  # Admin always gets full access
     
-    # Create user object
-    new_user = {
-        "id": user_id,
-        "email": email,
-        "password_hash": generate_password_hash(password),
-        "role": role,
-        "name": name,
-        "permissions": permissions
-    }
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Insert user
+        cursor.execute("""
+            INSERT INTO users (id, email, password_hash, name, role)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            user_id,
+            email,
+            generate_password_hash(password),
+            name,
+            role
+        ))
+        
+        # Set permissions
+        if has_wildcard:
+            cursor.execute("""
+                INSERT INTO user_wildcard_permissions (user_id, has_wildcard)
+                VALUES (%s, TRUE)
+            """, (user_id,))
+        else:
+            # Add specific host permissions
+            host_permissions = permissions.get('hosts', [])
+            if isinstance(host_permissions, list):
+                for host_id in host_permissions:
+                    cursor.execute("""
+                        INSERT INTO user_host_permissions (user_id, host_id)
+                        VALUES (%s, %s)
+                    """, (user_id, host_id))
+        
+        # Add group permissions
+        group_permissions = permissions.get('groups', [])
+        if isinstance(group_permissions, list):
+            for group_id in group_permissions:
+                cursor.execute("""
+                    INSERT INTO user_group_permissions (user_id, group_id)
+                    VALUES (%s, %s)
+                """, (user_id, group_id))
+        
+        # Commit changes
+        db.commit()
+        
+        return True, user_id
     
-    # Add user to users dictionary
-    users = load_users()
-    users[user_id] = new_user
-    save_users(users)
-    
-    return True, user_id
+    except Exception as e:
+        current_app.logger.error(f"Error creating user: {e}")
+        db.rollback()
+        return False, str(e)
 
 def update_user(user_id, updates, modifier_id=None):
     """
@@ -152,12 +190,10 @@ def update_user(user_id, updates, modifier_id=None):
         updates: Dictionary of fields to update
         modifier_id: ID of the user making the change (for permission checks)
     """
-    users = load_users()
-    
-    if user_id not in users:
+    # Get the user to make sure they exist
+    user = get_user_by_id(user_id)
+    if not user:
         return False, "User not found"
-    
-    user = users[user_id]
     
     # Super admin protection
     if user_id == SUPER_ADMIN_ID:
@@ -167,27 +203,67 @@ def update_user(user_id, updates, modifier_id=None):
     if user.get('role') == 'admin' and modifier_id != SUPER_ADMIN_ID:
         return False, "Only the super administrator can modify admin accounts"
     
-    # Create a copy of the updates to avoid modifying the original
-    safe_updates = updates.copy()
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Create a copy of the updates to avoid modifying the original
+        safe_updates = updates.copy()
+        
+        # Update user fields in the database
+        if 'email' in safe_updates:
+            cursor.execute("""
+                UPDATE users SET email = %s
+                WHERE id = %s
+            """, (safe_updates['email'], user_id))
+        
+        if 'name' in safe_updates:
+            cursor.execute("""
+                UPDATE users SET name = %s
+                WHERE id = %s
+            """, (safe_updates['name'], user_id))
+        
+        if 'password' in safe_updates:
+            cursor.execute("""
+                UPDATE users SET password_hash = %s
+                WHERE id = %s
+            """, (generate_password_hash(safe_updates['password']), user_id))
+        
+        # Handle role changes
+        if 'role' in safe_updates:
+            cursor.execute("""
+                UPDATE users SET role = %s
+                WHERE id = %s
+            """, (safe_updates['role'], user_id))
+            
+            # If user is becoming an admin, grant full permissions
+            if safe_updates['role'] == 'admin':
+                # Remove specific permissions
+                cursor.execute("""
+                    DELETE FROM user_host_permissions
+                    WHERE user_id = %s
+                """, (user_id,))
+                
+                # Set wildcard permission
+                cursor.execute("""
+                    INSERT INTO user_wildcard_permissions (user_id, has_wildcard)
+                    VALUES (%s, TRUE)
+                    ON DUPLICATE KEY UPDATE has_wildcard = TRUE
+                """, (user_id,))
+        
+        # Update permissions if provided
+        if 'permissions' in safe_updates:
+            update_user_permissions(user_id, safe_updates['permissions'], modifier_id)
+        
+        # Commit changes
+        db.commit()
+        
+        return True, "User updated successfully"
     
-    # Handle role changes and enforce permission consistency
-    if 'role' in safe_updates:
-        # If user is becoming an admin, grant full permissions
-        if safe_updates['role'] == 'admin':
-            if 'permissions' not in safe_updates:
-                safe_updates['permissions'] = {'hosts': '*'}
-            else:
-                safe_updates['permissions']['hosts'] = '*'
-    
-    # Update user fields
-    for field, value in safe_updates.items():
-        if field == 'password':
-            user['password_hash'] = generate_password_hash(value)
-        elif field != 'password_hash' and field != 'id':  # Don't allow direct password_hash or id changes
-            user[field] = value
-    
-    save_users(users)
-    return True, "User updated successfully"
+    except Exception as e:
+        current_app.logger.error(f"Error updating user: {e}")
+        db.rollback()
+        return False, str(e)
 
 def delete_user(user_id, deleter_id=None):
     """
@@ -197,9 +273,9 @@ def delete_user(user_id, deleter_id=None):
         user_id: ID of the user to delete
         deleter_id: ID of the user performing the deletion (for permission checks)
     """
-    users = load_users()
-    
-    if user_id not in users:
+    # Get user to make sure they exist
+    user = get_user_by_id(user_id)
+    if not user:
         return False, "User not found"
     
     # Super admin protection
@@ -207,18 +283,40 @@ def delete_user(user_id, deleter_id=None):
         return False, "The super administrator account cannot be deleted"
     
     # Only super admin can delete admin accounts
-    if users[user_id].get('role') == 'admin' and deleter_id != SUPER_ADMIN_ID:
+    if user.get('role') == 'admin' and deleter_id != SUPER_ADMIN_ID:
         return False, "Only the super administrator can delete admin accounts"
     
-    # Prevent deleting the last admin
-    if users[user_id].get('role') == 'admin':
-        admin_count = sum(1 for u in users.values() if u.get('role') == 'admin')
-        if admin_count <= 1:
-            return False, "Cannot delete the last admin user"
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        # If user is admin, check if they're the last admin
+        if user.get('role') == 'admin':
+            cursor.execute("""
+                SELECT COUNT(*) as admin_count FROM users
+                WHERE role = 'admin'
+            """)
+            result = cursor.fetchone()
+            admin_count = result[0]
+            
+            if admin_count <= 1:
+                return False, "Cannot delete the last admin user"
+        
+        # Delete user (foreign key constraints will cascade and delete permissions)
+        cursor.execute("""
+            DELETE FROM users
+            WHERE id = %s
+        """, (user_id,))
+        
+        # Commit changes
+        db.commit()
+        
+        return True, "User deleted successfully"
     
-    del users[user_id]
-    save_users(users)
-    return True, "User deleted successfully"
+    except Exception as e:
+        current_app.logger.error(f"Error deleting user: {e}")
+        db.rollback()
+        return False, str(e)
 
 def verify_password(email, password):
     """Verify a user's password."""
@@ -232,15 +330,6 @@ def verify_password(email, password):
     
     return False, None
 
-def get_user_permissions(user_id):
-    """Get a user's permissions."""
-    user = get_user_by_id(user_id)
-    
-    if not user:
-        return None
-    
-    return user.get('permissions', {})
-
 def update_user_permissions(user_id, permissions, modifier_id=None):
     """
     Update a user's permissions.
@@ -250,9 +339,9 @@ def update_user_permissions(user_id, permissions, modifier_id=None):
         permissions: New permissions
         modifier_id: ID of the user making the change (for permission checks)
     """
-    users = load_users()
-    
-    if user_id not in users:
+    # Get user to make sure they exist
+    user = get_user_by_id(user_id)
+    if not user:
         return False, "User not found"
     
     # Super admin protection
@@ -260,27 +349,61 @@ def update_user_permissions(user_id, permissions, modifier_id=None):
         return False, "The super administrator's permissions cannot be modified"
     
     # Only super admin can modify admin permissions
-    if users[user_id].get('role') == 'admin' and modifier_id != SUPER_ADMIN_ID:
+    if user.get('role') == 'admin' and modifier_id != SUPER_ADMIN_ID:
         return False, "Only the super administrator can modify admin permissions"
     
-    # Admin users always get full access
-    if users[user_id].get('role') == 'admin':
-        permissions = {'hosts': '*', 'groups': []}
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Clear existing permissions
+        cursor.execute("DELETE FROM user_host_permissions WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM user_group_permissions WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM user_wildcard_permissions WHERE user_id = %s", (user_id,))
+        
+        # Admin users always get full access
+        if user.get('role') == 'admin':
+            cursor.execute("""
+                INSERT INTO user_wildcard_permissions (user_id, has_wildcard)
+                VALUES (%s, TRUE)
+            """, (user_id,))
+        else:
+            # Set new permissions
+            if permissions.get('hosts') == '*':
+                # Set wildcard permission
+                cursor.execute("""
+                    INSERT INTO user_wildcard_permissions (user_id, has_wildcard)
+                    VALUES (%s, TRUE)
+                """, (user_id,))
+            elif isinstance(permissions.get('hosts'), list):
+                # Set specific host permissions
+                for host_id in permissions['hosts']:
+                    cursor.execute("""
+                        INSERT INTO user_host_permissions (user_id, host_id)
+                        VALUES (%s, %s)
+                    """, (user_id, host_id))
+            
+            # Set group permissions
+            if isinstance(permissions.get('groups'), list):
+                for group_id in permissions['groups']:
+                    cursor.execute("""
+                        INSERT INTO user_group_permissions (user_id, group_id)
+                        VALUES (%s, %s)
+                    """, (user_id, group_id))
+        
+        # Commit changes
+        db.commit()
+        
+        return True, "Permissions updated successfully"
     
-    # Validate host list - ensure it's a list or wildcard
-    if permissions.get('hosts') != '*' and not isinstance(permissions.get('hosts'), list):
-        permissions['hosts'] = []
-    
-    # Validate groups list - ensure it's a list
-    if not isinstance(permissions.get('groups'), list):
-        permissions['groups'] = []
-    
-    users[user_id]['permissions'] = permissions
-    save_users(users)
-    return True, "Permissions updated successfully"
+    except Exception as e:
+        current_app.logger.error(f"Error updating permissions: {e}")
+        db.rollback()
+        return False, str(e)
 
 def can_access_host(user_id, host_id):
     """Check if a user can access a specific host."""
+    # Get the user
     user = get_user_by_id(user_id)
     
     if not user:
@@ -295,21 +418,43 @@ def can_access_host(user_id, host_id):
         return True
     
     # Check for specific host access
-    return host_id in user.get('permissions', {}).get('hosts', [])
+    if host_id in user.get('permissions', {}).get('hosts', []):
+        return True
+    
+    # Check for access through groups
+    db = get_db()
+    cursor = db.cursor()
+    
+    # This query checks if the user has access to any group that contains the host
+    cursor.execute("""
+        SELECT 1 FROM user_group_permissions ugp
+        JOIN group_hosts gh ON ugp.group_id = gh.group_id
+        WHERE ugp.user_id = %s AND gh.host_id = %s
+    """, (user_id, host_id))
+    
+    result = cursor.fetchone()
+    cursor.close()
+    
+    return result is not None
 
 def get_all_users():
     """Get all users with sensitive information removed."""
-    users = load_users()
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
     
-    # Create a new dictionary with sensitive info removed
-    safe_users = {}
-    for user_id, user in users.items():
-        safe_users[user_id] = {
-            "id": user_id,
-            "email": user.get('email'),
-            "name": user.get('name'),
-            "role": user.get('role'),
-            "permissions": user.get('permissions', {})
-        }
+    cursor.execute("""
+        SELECT u.id, u.email, u.name, u.role, w.has_wildcard
+        FROM users u
+        LEFT JOIN user_wildcard_permissions w ON u.id = w.user_id
+    """)
     
-    return safe_users
+    users = cursor.fetchall()
+    cursor.close()
+    
+    # Add permissions to each user
+    for user in users:
+        user['permissions'] = get_user_permissions(user['id'])
+        # Convert has_wildcard to boolean 
+        user['has_wildcard'] = bool(user.get('has_wildcard'))
+    
+    return users

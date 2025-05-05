@@ -14,8 +14,7 @@ users_bp = Blueprint('users', __name__, url_prefix='/users')
 def get_users():
     """Get all users (admin only)."""
     users = get_all_users()
-    # Users is now directly a list, no need to call .values()
-    return jsonify(users)
+    return jsonify(list(users.values()))
 
 @users_bp.route('/<user_id>', methods=['GET'])
 @require_admin
