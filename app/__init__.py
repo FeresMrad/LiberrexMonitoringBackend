@@ -46,5 +46,10 @@ def create_app():
     
     # Register socket events
     register_socket_events(socketio, host_subscribers)
-    
+
+    # Initialize alerts
+    from app.alerts.engine import rebuild_alert_state
+    with app.app_context():
+        rebuild_alert_state()
+
     return app

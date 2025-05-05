@@ -8,7 +8,7 @@ webhook_bp = Blueprint('webhook', __name__, url_prefix='/write')
 
 @webhook_bp.route('', methods=['POST'])
 def influxdb_webhook():
-    """Receives data from InfluxDB and sends it to WebSocket clients."""
+    """Receives data from InfluxDB and processes it for alerts and WebSocket clients."""
     try:
         from app import socketio, host_subscribers
         
@@ -52,6 +52,10 @@ def influxdb_webhook():
                     if host in host_subscribers and host_subscribers[host]:
                         print(f"Emitting data to {len(host_subscribers[host])} clients subscribed to {host}")
                         socketio.emit("metric_update", data_to_emit, room=host)
+                    
+                    # Process for alerts
+                    from app.alerts.engine import process_metric_for_alerts
+                    process_metric_for_alerts(measurement, host, fields, timestamp)
 
         return "", 204  # InfluxDB expects no response content
     except Exception as e:
