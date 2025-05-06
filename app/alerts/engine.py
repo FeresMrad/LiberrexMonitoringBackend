@@ -3,6 +3,7 @@ import uuid
 from flask import current_app
 from app.mysql import get_db
 from app.alerts.rules import get_all_rules, get_rules_for_measurement
+from app.alerts.notification import send_alert_notification
 
 # Global in-memory store for last seen values
 # Format: {rule_id: {host: {'last_value': value, 'last_check': timestamp}}}
@@ -80,6 +81,9 @@ def handle_alert_trigger(rule, host, value):
         
         db.commit()
         current_app.logger.info(f"Successfully inserted alert with ID {alert_id}")
+        
+        # Send notifications if configured
+        send_alert_notification(rule, host, value, message)
     except Exception as e:
         current_app.logger.error(f"Database error inserting alert: {e}", exc_info=True)
         db.rollback()
@@ -99,6 +103,10 @@ def resolve_alert_if_needed(rule, host, current_value):
             WHERE rule_id = %s AND host = %s AND status = 'triggered'
         """, (rule['id'], host))
         
+        affected_rows = cursor.rowcount
+        if affected_rows > 0:
+            current_app.logger.info(f"Resolved {affected_rows} alerts for rule {rule['id']}, host {host}")
+        
         db.commit()
         cursor.close()
 
@@ -116,13 +124,19 @@ def generate_alert_message(rule, host, value):
 def process_metric_for_alerts(measurement, host, fields, timestamp):
     """Process a single metric for alerts in real-time."""
     try:
-        # Get all enabled rules for this measurement
+        # Get all rules for this measurement
         rules = get_rules_for_measurement(measurement)
-        current_app.logger.info(f"Processing {measurement} metric for {host}, found {len(rules)} rules")
+        current_app.logger.info(f"Found {len(rules)} enabled rules for {measurement} on host {host}")
         
         for rule in rules:
-            current_app.logger.info(f"Checking rule '{rule['name']}' (ID: {rule['id']})")
+            current_app.logger.info(f"Processing rule '{rule['name']}' (ID: {rule['id']}, enabled: {rule['enabled']})")
             
+            # Double-check the rule is enabled - this is redundant as get_rules_for_measurement already filters,
+            # but adding this for safety
+            if not bool(rule.get('enabled', False)):
+                current_app.logger.info(f"Skipping disabled rule {rule['id']}")
+                continue
+                
             # Check if this rule applies to this host
             if not host_matches_rule(rule, host):
                 current_app.logger.info(f"Rule {rule['id']} does not match host {host}")
@@ -165,3 +179,4 @@ def rebuild_alert_state():
     """Rebuild alert state from database on application startup."""
     global alert_state
     alert_state = {}
+    current_app.logger.info("Alert state initialized")
