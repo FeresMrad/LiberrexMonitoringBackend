@@ -104,6 +104,10 @@ def get_alerts():
     status = request.args.get('status')
     host = request.args.get('host')
     
+    # Get the current user's ID from the token
+    user_id = request.user.get('user_id')
+    user_role = request.user.get('role')
+    
     db = get_db()
     cursor = db.cursor(dictionary=True)
     
@@ -118,13 +122,19 @@ def get_alerts():
     conditions = []
     params = []
     
+    # Apply status filter if provided
     if status:
         conditions.append("e.status = %s")
         params.append(status)
     
+    # Apply host filter if provided
     if host:
         conditions.append("e.host = %s")
         params.append(host)
+        
+        # Check access to this specific host for non-admins
+        if user_role != 'admin' and not can_access_host(user_id, host):
+            return jsonify([])  # Return empty if no access
     
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -132,10 +142,22 @@ def get_alerts():
     query += " ORDER BY e.triggered_at DESC"
     
     cursor.execute(query, params)
-    alerts = cursor.fetchall()
+    all_alerts = cursor.fetchall()
     cursor.close()
     
-    return jsonify(alerts)
+    # If admin, return all alerts
+    if user_role == 'admin':
+        return jsonify(all_alerts)
+    
+    # For regular users, filter by accessible hosts
+    from app.auth import can_access_host
+    
+    filtered_alerts = []
+    for alert in all_alerts:
+        if can_access_host(user_id, alert['host']):
+            filtered_alerts.append(alert)
+    
+    return jsonify(filtered_alerts)
 
 @alerts_bp.route('/events/<alert_id>', methods=['DELETE'])
 @require_auth
