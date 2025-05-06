@@ -8,9 +8,9 @@ from app.alerts.rules import get_all_rules, get_rules_for_measurement
 from app.alerts.notification import send_alert_notification
 from app.auth import get_all_hosts
 
-# Global in-memory store for breach history
-# Format: {rule_id: {host: {'breaches': [(timestamp, value)], 'last_check': timestamp}}}
-breach_history = {}
+# Global in-memory store for last seen values
+# Format: {rule_id: {host: {'last_value': value, 'last_check': timestamp}}}
+alert_state = {}
 
 def host_matches_rule(rule, host):
     """Check if a host is targeted by this rule."""
@@ -36,74 +36,19 @@ def is_threshold_breached(rule, value):
     else:
         return False
 
-def record_breach(rule, host, value, timestamp):
-    """Record a threshold breach for duration tracking."""
+def record_last_value(rule, host, value, timestamp):
+    """Record the last value for a host/rule combination."""
     rule_id = rule['id']
     
-    if rule_id not in breach_history:
-        breach_history[rule_id] = {}
+    if rule_id not in alert_state:
+        alert_state[rule_id] = {}
         
-    if host not in breach_history[rule_id]:
-        breach_history[rule_id][host] = {'breaches': [], 'last_check': None}
+    if host not in alert_state[rule_id]:
+        alert_state[rule_id][host] = {'last_value': None, 'last_check': None}
     
-    # Convert timestamp to integer if it's a string
-    if isinstance(timestamp, str):
-        timestamp = int(timestamp)
-    
-    # Add new breach
-    breach_history[rule_id][host]['breaches'].append((timestamp, value))
-    breach_history[rule_id][host]['last_check'] = timestamp
-    
-    # Remove old breaches (outside duration window)
-    duration_ns = rule['duration_minutes'] * 60 * 1000000000  # Convert to nanoseconds
-    cutoff = timestamp - duration_ns
-    
-    breach_history[rule_id][host]['breaches'] = [
-        b for b in breach_history[rule_id][host]['breaches'] if b[0] >= cutoff
-    ]
-
-def clear_breach_history(rule, host):
-    """Clear breach history when conditions return to normal."""
-    rule_id = rule['id']
-    
-    if rule_id in breach_history and host in breach_history[rule_id]:
-        breach_history[rule_id][host]['breaches'] = []
-
-def check_duration_from_history(rule, host):
-    """Check if breaches have persisted for the required duration."""
-    rule_id = rule['id']
-    
-    if rule_id not in breach_history or host not in breach_history[rule_id]:
-        current_app.logger.info(f"No breach history for rule {rule_id}, host {host}")
-        return False
-    
-    breaches = breach_history[rule_id][host]['breaches']
-    
-    if not breaches:
-        current_app.logger.info(f"Empty breach history for rule {rule_id}, host {host}")
-        return False
-    
-    # Need at least 3 data points to consider it persistent
-    if len(breaches) < 2:
-        current_app.logger.info(f"Only {len(breaches)} breach points for rule {rule_id}, host {host} - need at least 3")
-        return False
-    
-    # Get oldest and newest breach timestamps
-    oldest = min(breaches, key=lambda x: x[0])[0]
-    newest = max(breaches, key=lambda x: x[0])[0]
-    
-    # Calculate duration in nanoseconds
-    duration_ns = newest - oldest
-    required_duration_ns = rule['duration_minutes'] * 60 * 1000000000
-    
-    # Calculate percentage of required duration
-    percentage = (duration_ns / required_duration_ns) * 100
-    current_app.logger.info(f"Duration: {duration_ns/1e9:.2f}s / {required_duration_ns/1e9:.2f}s ({percentage:.1f}%)")
-    
-    # Need at least 70% of the required duration with breaches
-    is_long_enough = duration_ns >= (required_duration_ns * 0.7)
-    current_app.logger.info(f"Duration check result: {is_long_enough}")
-    return is_long_enough
+    # Update with new value
+    alert_state[rule_id][host]['last_value'] = value
+    alert_state[rule_id][host]['last_check'] = timestamp
 
 def handle_alert_trigger(rule, host, value):
     """Handle the alert trigger by creating or updating an alert event."""
@@ -209,66 +154,41 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
             current_value = fields[field_name]
             current_app.logger.info(f"Current value for {field_name}: {current_value}, threshold: {rule['threshold']}")
             
-            # Check if threshold is breached
+            # Record the last value for this rule/host
+            record_last_value(rule, host, current_value, timestamp)
+            
+            # Check if threshold is breached - SIMPLIFIED LOGIC
             is_breached = is_threshold_breached(rule, current_value)
             current_app.logger.info(f"Threshold breached: {is_breached}")
             
             if is_breached:
-                # Add to breach history
-                record_breach(rule, host, current_value, timestamp)
-                
-                # Check breach history after recording
-                rule_id = rule['id']
-                if rule_id in breach_history and host in breach_history[rule_id]:
-                    breach_count = len(breach_history[rule_id][host]['breaches'])
-                    current_app.logger.info(f"Breach history: {breach_count} breaches recorded for rule {rule_id}, host {host}")
-                
-                # Check if conditions for duration are met
-                duration_met = check_duration_from_history(rule, host)
-                current_app.logger.info(f"Duration conditions met: {duration_met}")
-                
-                if duration_met:
-                    # Trigger alert
-                    current_app.logger.info(f"TRIGGERING ALERT for rule {rule['id']}, host {host}, value {current_value}")
-                    handle_alert_trigger(rule, host, current_value)
+                # Immediately trigger alert if threshold is breached
+                current_app.logger.info(f"TRIGGERING ALERT for rule {rule['id']}, host {host}, value {current_value}")
+                handle_alert_trigger(rule, host, current_value)
             else:
-                # Clear breach history
-                clear_breach_history(rule, host)
-                
                 # Resolve any active alerts
                 resolve_alert_if_needed(rule, host, current_value)
     except Exception as e:
         current_app.logger.error(f"Error processing metric for alerts: {e}", exc_info=True)
 
-def clean_breach_history():
-    """Clean up old breach history data."""
+def clean_alert_state():
+    """Clean up old alert state data."""
     current_time = time.time() * 1e9  # Convert to nanoseconds
     
-    # Get all rules to determine proper duration windows
-    rules = get_all_rules()
-    for rule in rules:
-        rule_id = rule['id']
-        if rule_id not in breach_history:
-            continue
-            
-        # Convert duration to nanoseconds + 30 minutes buffer
-        duration_ns = (rule['duration_minutes'] + 30) * 60 * 1000000000
-        cutoff = current_time - duration_ns
-        
-        for host in list(breach_history[rule_id].keys()):
-            # Remove old breaches
-            breach_history[rule_id][host]['breaches'] = [
-                b for b in breach_history[rule_id][host]['breaches'] if b[0] >= cutoff
-            ]
-            
-            # If host has no breaches and last check is old, remove it
-            if not breach_history[rule_id][host]['breaches'] and \
-               breach_history[rule_id][host]['last_check'] < cutoff:
-                del breach_history[rule_id][host]
+    # Define maximum age for stored state (1 day)
+    max_age_ns = 24 * 60 * 60 * 1e9
+    cutoff_time = current_time - max_age_ns
+    
+    for rule_id in list(alert_state.keys()):
+        for host in list(alert_state[rule_id].keys()):
+            # If last check is older than cutoff, remove the entry
+            last_check = alert_state[rule_id][host]['last_check']
+            if last_check and last_check < cutoff_time:
+                del alert_state[rule_id][host]
         
         # If rule has no hosts, remove it
-        if not breach_history[rule_id]:
-            del breach_history[rule_id]
+        if not alert_state[rule_id]:
+            del alert_state[rule_id]
 
 def check_stale_metrics():
     """Check for and resolve alerts for metrics that have stopped reporting."""
@@ -287,40 +207,22 @@ def check_stale_metrics():
     active_alerts = cursor.fetchall()
     
     for alert in active_alerts:
-        # If the alert is more than 30 minutes old and no new breaches
-        # have been recorded, resolve it (metrics likely stopped reporting)
+        # If the alert is more than 30 minutes old, resolve it (metrics likely stopped reporting)
         alert_age_ns = current_time - (datetime.timestamp(alert['triggered_at']) * 1e9)
         stale_threshold_ns = 30 * 60 * 1e9  # 30 minutes in nanoseconds
         
         if alert_age_ns > stale_threshold_ns:
-            rule_id = alert['rule_id']
-            host = alert['host']
-            
-            # Check if we have recent breach history
-            has_recent_breaches = False
-            if (rule_id in breach_history and 
-                host in breach_history[rule_id] and 
-                breach_history[rule_id][host]['breaches']):
-                
-                newest_breach = max(breach_history[rule_id][host]['breaches'], 
-                                   key=lambda x: x[0])
-                breach_age_ns = current_time - newest_breach[0]
-                
-                if breach_age_ns < stale_threshold_ns:
-                    has_recent_breaches = True
-            
-            # If no recent breaches, resolve the alert
-            if not has_recent_breaches:
-                cursor.execute("""
-                    UPDATE alert_events
-                    SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                """, (alert['id'],))
+            # Resolve the alert
+            cursor.execute("""
+                UPDATE alert_events
+                SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (alert['id'],))
     
     db.commit()
     cursor.close()
 
 def rebuild_alert_state():
     """Rebuild alert state from database on application startup."""
-    global breach_history
-    breach_history = {}
+    global alert_state
+    alert_state = {}
