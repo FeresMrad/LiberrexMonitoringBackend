@@ -136,3 +136,28 @@ def get_alerts():
     cursor.close()
     
     return jsonify(alerts)
+
+@alerts_bp.route('/events/<alert_id>', methods=['DELETE'])
+@require_auth
+def delete_alert(alert_id):
+    """Delete a specific alert event."""
+    db = get_db()
+    cursor = db.cursor()
+    
+    try:
+        # Delete the alert event
+        cursor.execute("DELETE FROM alert_events WHERE id = %s", (alert_id,))
+        
+        # Check if any rows were affected
+        if cursor.rowcount == 0:
+            db.rollback()
+            return jsonify({"error": "Alert not found"}), 404
+        
+        db.commit()
+        return jsonify({"success": True, "message": "Alert deleted successfully"})
+    except Exception as e:
+        current_app.logger.error(f"Error deleting alert: {e}")
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
