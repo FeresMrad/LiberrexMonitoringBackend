@@ -114,7 +114,7 @@ def get_alerts():
     # Build query with optional filters
     query = """
         SELECT e.id, e.rule_id, e.host, e.status, e.value, 
-               e.triggered_at, e.resolved_at, e.message, r.name as rule_name
+               e.triggered_at, e.resolved_at, e.message, r.name as rule_name, r.comparison, r.threshold, r.metric_type
         FROM alert_events e
         JOIN alert_rules r ON e.rule_id = r.id
     """
