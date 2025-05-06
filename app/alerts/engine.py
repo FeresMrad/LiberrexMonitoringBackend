@@ -74,15 +74,18 @@ def check_duration_from_history(rule, host):
     rule_id = rule['id']
     
     if rule_id not in breach_history or host not in breach_history[rule_id]:
+        current_app.logger.info(f"No breach history for rule {rule_id}, host {host}")
         return False
     
     breaches = breach_history[rule_id][host]['breaches']
     
     if not breaches:
+        current_app.logger.info(f"Empty breach history for rule {rule_id}, host {host}")
         return False
     
     # Need at least 3 data points to consider it persistent
-    if len(breaches) < 3:
+    if len(breaches) < 2:
+        current_app.logger.info(f"Only {len(breaches)} breach points for rule {rule_id}, host {host} - need at least 3")
         return False
     
     # Get oldest and newest breach timestamps
@@ -93,8 +96,14 @@ def check_duration_from_history(rule, host):
     duration_ns = newest - oldest
     required_duration_ns = rule['duration_minutes'] * 60 * 1000000000
     
+    # Calculate percentage of required duration
+    percentage = (duration_ns / required_duration_ns) * 100
+    current_app.logger.info(f"Duration: {duration_ns/1e9:.2f}s / {required_duration_ns/1e9:.2f}s ({percentage:.1f}%)")
+    
     # Need at least 70% of the required duration with breaches
-    return duration_ns >= (required_duration_ns * 0.7)
+    is_long_enough = duration_ns >= (required_duration_ns * 0.7)
+    current_app.logger.info(f"Duration check result: {is_long_enough}")
+    return is_long_enough
 
 def handle_alert_trigger(rule, host, value):
     """Handle the alert trigger by creating or updating an alert event."""
@@ -112,6 +121,7 @@ def handle_alert_trigger(rule, host, value):
     
     if existing_alert:
         # Alert already exists, don't create a new one
+        current_app.logger.info(f"Alert already exists for rule {rule['id']}, host {host} - not creating duplicate")
         cursor.close()
         return
     
@@ -119,17 +129,27 @@ def handle_alert_trigger(rule, host, value):
     alert_id = str(uuid.uuid4())
     message = generate_alert_message(rule, host, value)
     
-    cursor.execute("""
-        INSERT INTO alert_events
-        (id, rule_id, host, status, value, message)
-        VALUES (%s, %s, %s, 'triggered', %s, %s)
-    """, (alert_id, rule['id'], host, value, message))
-    
-    db.commit()
-    cursor.close()
+    try:
+        current_app.logger.info(f"Inserting new alert with ID {alert_id} for rule {rule['id']}, host {host}")
+        cursor.execute("""
+            INSERT INTO alert_events
+            (id, rule_id, host, status, value, message)
+            VALUES (%s, %s, %s, 'triggered', %s, %s)
+        """, (alert_id, rule['id'], host, value, message))
+        
+        db.commit()
+        current_app.logger.info(f"Successfully inserted alert with ID {alert_id}")
+    except Exception as e:
+        current_app.logger.error(f"Database error inserting alert: {e}", exc_info=True)
+        db.rollback()
+    finally:
+        cursor.close()
     
     # Send notification for the new alert
-    send_alert_notification(rule, host, value, message)
+    try:
+        send_alert_notification(rule, host, value, message)
+    except Exception as e:
+        current_app.logger.error(f"Error sending alert notification: {e}", exc_info=True)
 
 def resolve_alert_if_needed(rule, host, current_value):
     """Resolve any active alerts that are no longer breaching threshold."""
@@ -163,31 +183,53 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
     try:
         # Get all enabled rules for this measurement
         rules = get_rules_for_measurement(measurement)
+        current_app.logger.info(f"Processing {measurement} metric for {host}, found {len(rules)} rules")
         
         for rule in rules:
+            current_app.logger.info(f"Checking rule '{rule['name']}' (ID: {rule['id']})")
+            
             # Check if this rule applies to this host
             if not host_matches_rule(rule, host):
+                current_app.logger.info(f"Rule {rule['id']} does not match host {host}")
                 continue
+            
+            current_app.logger.info(f"Rule {rule['id']} applies to host {host}")
                 
             # Extract the field we care about from the metric
             metric_parts = rule['metric_type'].split('.')
             if len(metric_parts) != 2 or metric_parts[0] != measurement:
+                current_app.logger.info(f"Metric type mismatch: {rule['metric_type']} vs {measurement}")
                 continue
                 
             field_name = metric_parts[1]
             if field_name not in fields:
+                current_app.logger.info(f"Field {field_name} not found in metric data: {list(fields.keys())}")
                 continue
                 
             current_value = fields[field_name]
+            current_app.logger.info(f"Current value for {field_name}: {current_value}, threshold: {rule['threshold']}")
             
             # Check if threshold is breached
-            if is_threshold_breached(rule, current_value):
+            is_breached = is_threshold_breached(rule, current_value)
+            current_app.logger.info(f"Threshold breached: {is_breached}")
+            
+            if is_breached:
                 # Add to breach history
                 record_breach(rule, host, current_value, timestamp)
                 
+                # Check breach history after recording
+                rule_id = rule['id']
+                if rule_id in breach_history and host in breach_history[rule_id]:
+                    breach_count = len(breach_history[rule_id][host]['breaches'])
+                    current_app.logger.info(f"Breach history: {breach_count} breaches recorded for rule {rule_id}, host {host}")
+                
                 # Check if conditions for duration are met
-                if check_duration_from_history(rule, host):
+                duration_met = check_duration_from_history(rule, host)
+                current_app.logger.info(f"Duration conditions met: {duration_met}")
+                
+                if duration_met:
                     # Trigger alert
+                    current_app.logger.info(f"TRIGGERING ALERT for rule {rule['id']}, host {host}, value {current_value}")
                     handle_alert_trigger(rule, host, current_value)
             else:
                 # Clear breach history
@@ -196,7 +238,7 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
                 # Resolve any active alerts
                 resolve_alert_if_needed(rule, host, current_value)
     except Exception as e:
-        current_app.logger.error(f"Error processing metric for alerts: {e}")
+        current_app.logger.error(f"Error processing metric for alerts: {e}", exc_info=True)
 
 def clean_breach_history():
     """Clean up old breach history data."""
