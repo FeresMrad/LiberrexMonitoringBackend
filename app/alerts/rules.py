@@ -1,6 +1,5 @@
-"""Alert rule management functions."""
+"""Simplified alert rule management functions."""
 import uuid
-from datetime import datetime
 from flask import current_app
 from app.mysql import get_db
 
@@ -11,7 +10,7 @@ def get_all_rules():
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, duration_minutes, severity, enabled, created_at 
+               threshold, enabled, created_at 
         FROM alert_rules
     """)
     
@@ -20,7 +19,6 @@ def get_all_rules():
     # Get targets for each rule
     for rule in rules:
         rule['targets'] = get_rule_targets(rule['id'])
-        rule['notifications'] = get_rule_notifications(rule['id'])
     
     cursor.close()
     return rules
@@ -39,7 +37,7 @@ def get_rule_by_id(rule_id):
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, duration_minutes, severity, enabled, created_at 
+               threshold, enabled, created_at 
         FROM alert_rules 
         WHERE id = %s
     """, (rule_id,))
@@ -52,7 +50,6 @@ def get_rule_by_id(rule_id):
     
     # Get targets for this rule
     rule['targets'] = get_rule_targets(rule_id)
-    rule['notifications'] = get_rule_notifications(rule_id)
     
     cursor.close()
     return rule
@@ -73,24 +70,7 @@ def get_rule_targets(rule_id):
     
     return targets
 
-def get_rule_notifications(rule_id):
-    """Get notification settings for a rule."""
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-    
-    cursor.execute("""
-        SELECT email_enabled, email_recipients 
-        FROM alert_notifications 
-        WHERE rule_id = %s
-    """, (rule_id,))
-    
-    notifications = cursor.fetchone()
-    cursor.close()
-    
-    return notifications or {'email_enabled': False, 'email_recipients': ''}
-
-def create_rule(name, description, metric_type, comparison, threshold, 
-                duration_minutes, severity, targets, notifications):
+def create_rule(name, description, metric_type, comparison, threshold, targets):
     """Create a new alert rule."""
     rule_id = str(uuid.uuid4())
     
@@ -101,12 +81,10 @@ def create_rule(name, description, metric_type, comparison, threshold,
         # Insert rule
         cursor.execute("""
             INSERT INTO alert_rules 
-            (id, name, description, metric_type, comparison, threshold, 
-             duration_minutes, severity, enabled)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+            (id, name, description, metric_type, comparison, threshold, enabled)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
         """, (
-            rule_id, name, description, metric_type, comparison, threshold,
-            duration_minutes, severity
+            rule_id, name, description, metric_type, comparison, threshold
         ))
         
         # Insert targets
@@ -115,17 +93,6 @@ def create_rule(name, description, metric_type, comparison, threshold,
                 INSERT INTO alert_targets (rule_id, target_type, target_id)
                 VALUES (%s, %s, %s)
             """, (rule_id, target['type'], target['id']))
-        
-        # Insert notification settings
-        cursor.execute("""
-            INSERT INTO alert_notifications 
-            (rule_id, email_enabled, email_recipients)
-            VALUES (%s, %s, %s)
-        """, (
-            rule_id, 
-            notifications.get('email_enabled', False),
-            notifications.get('email_recipients', '')
-        ))
         
         db.commit()
         return rule_id
@@ -142,12 +109,12 @@ def update_rule(rule_id, updates):
         
         # Update basic rule properties
         if any(k in updates for k in ['name', 'description', 'metric_type', 'comparison', 
-                                      'threshold', 'duration_minutes', 'severity', 'enabled']):
+                                      'threshold', 'enabled']):
             fields = []
             params = []
             
             for field in ['name', 'description', 'metric_type', 'comparison', 
-                         'threshold', 'duration_minutes', 'severity', 'enabled']:
+                         'threshold', 'enabled']:
                 if field in updates:
                     fields.append(f"{field} = %s")
                     params.append(updates[field])
@@ -168,22 +135,6 @@ def update_rule(rule_id, updates):
                     INSERT INTO alert_targets (rule_id, target_type, target_id)
                     VALUES (%s, %s, %s)
                 """, (rule_id, target['type'], target['id']))
-        
-        # Update notifications if provided
-        if 'notifications' in updates:
-            notif = updates['notifications']
-            cursor.execute("""
-                INSERT INTO alert_notifications 
-                (rule_id, email_enabled, email_recipients)
-                VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                email_enabled = VALUES(email_enabled),
-                email_recipients = VALUES(email_recipients)
-            """, (
-                rule_id,
-                notif.get('email_enabled', False),
-                notif.get('email_recipients', '')
-            ))
         
         db.commit()
         return True

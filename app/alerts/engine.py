@@ -1,12 +1,8 @@
-"""Alert detection and evaluation engine."""
+"""Simplified alert detection and evaluation engine."""
 import uuid
-import time
-from datetime import datetime
 from flask import current_app
 from app.mysql import get_db
 from app.alerts.rules import get_all_rules, get_rules_for_measurement
-from app.alerts.notification import send_alert_notification
-from app.auth import get_all_hosts
 
 # Global in-memory store for last seen values
 # Format: {rule_id: {host: {'last_value': value, 'last_check': timestamp}}}
@@ -51,14 +47,14 @@ def record_last_value(rule, host, value, timestamp):
     alert_state[rule_id][host]['last_check'] = timestamp
 
 def handle_alert_trigger(rule, host, value):
-    """Handle the alert trigger by creating or updating an alert event."""
+    """Handle the alert trigger by creating a new alert event."""
     db = get_db()
     cursor = db.cursor(dictionary=True)
     
     # Check if there's already an active alert for this rule and host
     cursor.execute("""
-        SELECT id, status FROM alert_events
-        WHERE rule_id = %s AND host = %s AND status != 'resolved'
+        SELECT id FROM alert_events
+        WHERE rule_id = %s AND host = %s AND status = 'triggered'
         ORDER BY triggered_at DESC LIMIT 1
     """, (rule['id'], host))
     
@@ -89,12 +85,6 @@ def handle_alert_trigger(rule, host, value):
         db.rollback()
     finally:
         cursor.close()
-    
-    # Send notification for the new alert
-    try:
-        send_alert_notification(rule, host, value, message)
-    except Exception as e:
-        current_app.logger.error(f"Error sending alert notification: {e}", exc_info=True)
 
 def resolve_alert_if_needed(rule, host, current_value):
     """Resolve any active alerts that are no longer breaching threshold."""
@@ -106,7 +96,7 @@ def resolve_alert_if_needed(rule, host, current_value):
         cursor.execute("""
             UPDATE alert_events 
             SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP
-            WHERE rule_id = %s AND host = %s AND status != 'resolved'
+            WHERE rule_id = %s AND host = %s AND status = 'triggered'
         """, (rule['id'], host))
         
         db.commit()
@@ -157,7 +147,7 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
             # Record the last value for this rule/host
             record_last_value(rule, host, current_value, timestamp)
             
-            # Check if threshold is breached - SIMPLIFIED LOGIC
+            # Check if threshold is breached
             is_breached = is_threshold_breached(rule, current_value)
             current_app.logger.info(f"Threshold breached: {is_breached}")
             
@@ -170,57 +160,6 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
                 resolve_alert_if_needed(rule, host, current_value)
     except Exception as e:
         current_app.logger.error(f"Error processing metric for alerts: {e}", exc_info=True)
-
-def clean_alert_state():
-    """Clean up old alert state data."""
-    current_time = time.time() * 1e9  # Convert to nanoseconds
-    
-    # Define maximum age for stored state (1 day)
-    max_age_ns = 24 * 60 * 60 * 1e9
-    cutoff_time = current_time - max_age_ns
-    
-    for rule_id in list(alert_state.keys()):
-        for host in list(alert_state[rule_id].keys()):
-            # If last check is older than cutoff, remove the entry
-            last_check = alert_state[rule_id][host]['last_check']
-            if last_check and last_check < cutoff_time:
-                del alert_state[rule_id][host]
-        
-        # If rule has no hosts, remove it
-        if not alert_state[rule_id]:
-            del alert_state[rule_id]
-
-def check_stale_metrics():
-    """Check for and resolve alerts for metrics that have stopped reporting."""
-    current_time = time.time() * 1e9  # Convert to nanoseconds
-    
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-    
-    # Get all active alerts
-    cursor.execute("""
-        SELECT id, rule_id, host, triggered_at 
-        FROM alert_events 
-        WHERE status = 'triggered'
-    """)
-    
-    active_alerts = cursor.fetchall()
-    
-    for alert in active_alerts:
-        # If the alert is more than 30 minutes old, resolve it (metrics likely stopped reporting)
-        alert_age_ns = current_time - (datetime.timestamp(alert['triggered_at']) * 1e9)
-        stale_threshold_ns = 30 * 60 * 1e9  # 30 minutes in nanoseconds
-        
-        if alert_age_ns > stale_threshold_ns:
-            # Resolve the alert
-            cursor.execute("""
-                UPDATE alert_events
-                SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (alert['id'],))
-    
-    db.commit()
-    cursor.close()
 
 def rebuild_alert_state():
     """Rebuild alert state from database on application startup."""

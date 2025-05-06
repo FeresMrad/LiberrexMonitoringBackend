@@ -1,4 +1,4 @@
-"""Alert API endpoints."""
+"""Simplified alert API endpoints."""
 from flask import Blueprint, jsonify, request
 from app.alerts.rules import (
     get_all_rules, get_rule_by_id, create_rule, update_rule, delete_rule
@@ -37,7 +37,7 @@ def add_rule():
         return jsonify({"error": "No data provided"}), 400
     
     # Validate required fields
-    required_fields = ['name', 'metric_type', 'comparison', 'threshold', 'severity']
+    required_fields = ['name', 'metric_type', 'comparison', 'threshold']
     for field in required_fields:
         if field not in data:
             return jsonify({"error": f"Field '{field}' is required"}), 400
@@ -50,10 +50,7 @@ def add_rule():
             metric_type=data['metric_type'],
             comparison=data['comparison'],
             threshold=float(data['threshold']),
-            duration_minutes=int(data.get('duration_minutes', 5)),
-            severity=data['severity'],
-            targets=data.get('targets', [{'type': 'all', 'id': '*'}]),
-            notifications=data.get('notifications', {})
+            targets=data.get('targets', [{'type': 'all', 'id': '*'}])
         )
         
         return jsonify({"success": True, "rule_id": rule_id}), 201
@@ -113,9 +110,7 @@ def get_alerts():
     # Build query with optional filters
     query = """
         SELECT e.id, e.rule_id, e.host, e.status, e.value, 
-               e.triggered_at, e.acknowledged_at, e.resolved_at, 
-               e.acknowledged_by, e.message, r.name as rule_name,
-               r.severity
+               e.triggered_at, e.resolved_at, e.message, r.name as rule_name
         FROM alert_events e
         JOIN alert_rules r ON e.rule_id = r.id
     """
@@ -141,29 +136,3 @@ def get_alerts():
     cursor.close()
     
     return jsonify(alerts)
-
-@alerts_bp.route('/events/<alert_id>/acknowledge', methods=['POST'])
-@require_auth
-def acknowledge_alert(alert_id):
-    """Acknowledge an alert."""
-    user_id = request.user.get('user_id')
-    
-    db = get_db()
-    cursor = db.cursor()
-    
-    # Find alert and update its status
-    cursor.execute("""
-        UPDATE alert_events 
-        SET status = 'acknowledged', acknowledged_at = CURRENT_TIMESTAMP, acknowledged_by = %s
-        WHERE id = %s AND status = 'triggered'
-    """, (user_id, alert_id))
-    
-    if cursor.rowcount == 0:
-        db.rollback()
-        cursor.close()
-        return jsonify({"error": "Alert not found or already acknowledged"}), 404
-    
-    db.commit()
-    cursor.close()
-    
-    return jsonify({"success": True})
