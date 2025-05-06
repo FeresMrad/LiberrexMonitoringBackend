@@ -16,6 +16,7 @@ from .users import users_bp
 from .groups import groups_bp
 from .apache import apache_bp
 from .alerts import alerts_bp
+from .notifications import notifications_bp
 
 # Register all sub-blueprints
 api_bp.register_blueprint(auth_bp)
@@ -29,6 +30,7 @@ api_bp.register_blueprint(users_bp)
 api_bp.register_blueprint(groups_bp)
 api_bp.register_blueprint(apache_bp)
 api_bp.register_blueprint(alerts_bp)
+api_bp.register_blueprint(notifications_bp)
 
 # Export the utility functions for use elsewhere
 from .utils import parse_time_parameters, format_time_range_params
