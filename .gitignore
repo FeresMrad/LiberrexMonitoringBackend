@@ -4,3 +4,4 @@ app/data/
 app/__pycache__/
 app/api/__pycache__/
 app/services/__pycache__/
+app/alerts/__pycache__/
