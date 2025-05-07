@@ -23,7 +23,8 @@ class Config:
     SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
     SMTP_USERNAME = os.getenv('SMTP_USERNAME')
     SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
-    ALERT_FROM_EMAIL = os.getenv('ALERT_FROM_EMAIL', 'mohamed.feres.mrad@liberrex.com')
+    ALERT_FROM_EMAIL = os.getenv('ALERT_FROM_EMAIL')
+    ALERT_EMAIL_RECIPIENTS = os.getenv('ALERT_EMAIL_RECIPIENTS')
     
     # VictoriaLogs configuration
     VICTORIALOGS_URL = os.getenv('VICTORIALOGS_URL')

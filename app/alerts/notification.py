@@ -8,10 +8,12 @@ from flask import current_app
 def send_alert_notification(rule, host, value, message):
     """Send notifications for a triggered alert."""
     notifications = rule.get('notifications', {})
+    severity = rule.get('severity', 'info')
     
-    # Send email notification if enabled
-    if notifications.get('email_enabled', False):
-        recipients = notifications.get('email_recipients', '')
+    # Send email for warning and critical (when email is enabled)
+    if severity in ['warning', 'critical'] and notifications.get('email_enabled', False):
+        # Use global config for recipients instead of per-rule recipients
+        recipients = current_app.config.get('ALERT_EMAIL_RECIPIENTS', '')
         if recipients:
             send_email_notification(rule, host, value, message, recipients)
 

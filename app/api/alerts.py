@@ -30,7 +30,7 @@ def get_rule(rule_id):
 @alerts_bp.route('/rules', methods=['POST'])
 @require_admin
 def add_rule():
-    """Create a new alert rule."""
+    """Create a new alert rule with severity determined by notification settings."""
     data = request.get_json()
     
     if not data:
@@ -42,6 +42,18 @@ def add_rule():
         if field not in data:
             return jsonify({"error": f"Field '{field}' is required"}), 400
     
+    # Determine severity based on notification settings
+    notifications = data.get('notifications', {})
+    email_enabled = notifications.get('email_enabled', False)
+    sms_enabled = notifications.get('sms_enabled', False)
+    
+    if sms_enabled:
+        severity = 'critical'
+    elif email_enabled:
+        severity = 'warning'
+    else:
+        severity = 'info'
+    
     # Create rule
     try:
         rule_id = create_rule(
@@ -50,8 +62,18 @@ def add_rule():
             metric_type=data['metric_type'],
             comparison=data['comparison'],
             threshold=float(data['threshold']),
-            targets=data.get('targets', [{'type': 'all', 'id': '*'}])
+            targets=data.get('targets', [{'type': 'all', 'id': '*'}]),
+            severity=severity  # Pass the derived severity
         )
+        
+        # Save notification settings
+        update_rule(rule_id, {
+            'notifications': {
+                'email_enabled': email_enabled,
+                'sms_enabled': sms_enabled,
+                'email_recipients': ''  # Will be configured in backend
+            }
+        })
         
         return jsonify({"success": True, "rule_id": rule_id}), 201
     
@@ -61,7 +83,7 @@ def add_rule():
 @alerts_bp.route('/rules/<rule_id>', methods=['PUT'])
 @require_admin
 def update_rule_endpoint(rule_id):
-    """Update a specific alert rule."""
+    """Update a specific alert rule with severity based on notification settings."""
     data = request.get_json()
     
     if not data:
@@ -71,6 +93,19 @@ def update_rule_endpoint(rule_id):
     rule = get_rule_by_id(rule_id)
     if not rule:
         return jsonify({"error": "Rule not found"}), 404
+    
+    # Determine severity if notification settings are provided
+    if 'notifications' in data:
+        notifications = data['notifications']
+        email_enabled = notifications.get('email_enabled', False)
+        sms_enabled = notifications.get('sms_enabled', False)
+        
+        if sms_enabled:
+            data['severity'] = 'critical'
+        elif email_enabled:
+            data['severity'] = 'warning'
+        else:
+            data['severity'] = 'info'
     
     # Update rule
     success = update_rule(rule_id, data)
