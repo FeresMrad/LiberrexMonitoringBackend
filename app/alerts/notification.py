@@ -30,7 +30,9 @@ def send_email_notification(rule, host, value, message, recipients):
         if not smtp_server or not from_email:
             current_app.logger.error("Email settings not configured")
             return
-        
+
+        host_display_name = get_host_display_name(host)
+
         # Create email message
         msg = MIMEMultipart()
         msg['From'] = from_email
@@ -42,7 +44,8 @@ def send_email_notification(rule, host, value, message, recipients):
         <html>
         <body>
             <h2>Alert Triggered: {rule['name']}</h2>
-            <p><strong>Host:</strong> {host}</p>
+            <p><strong>Host:</strong> {host_display_name}</p>
+	    <p><strong>Host ID:</strong> {host}</p>
             <p><strong>Severity:</strong> {rule['severity'].upper()}</p>
             <p><strong>Message:</strong> {message}</p>
             <p><strong>Current Value:</strong> {value}</p>
@@ -66,3 +69,22 @@ def send_email_notification(rule, host, value, message, recipients):
     
     except Exception as e:
         current_app.logger.error(f"Error sending email notification: {e}")
+def get_host_display_name(host_id):
+    """Get the display name for a host (custom name or ID if no custom name exists)."""
+    try:
+        from app.services.influxdb import query_influxdb
+        
+        # Query the custom_name for this host
+        query = f'SELECT last("custom_name") FROM "custom_data" WHERE "host" = \'{host_id}\''
+        response = query_influxdb(query)
+        
+        if response["results"][0].get("series"):
+            values = response["results"][0]["series"][0]["values"][0]
+            custom_name = values[1]
+            if custom_name:
+                return custom_name
+        
+        return host_id  # Fallback to host ID if no custom name found
+    except Exception as e:
+        current_app.logger.error(f"Error getting host display name: {e}")
+        return host_id  # Fallback to host ID on error
