@@ -19,8 +19,8 @@ def get_notifications():
     # Query to get notifications
     query = """
         SELECT n.id, n.alert_id, n.user_id, n.read, n.created_at, 
-               e.host, e.value, e.message, e.triggered_at,
-               r.name as rule_name, r.severity
+               e.host, e.value, e.message, e.triggered_at, e.rule_id,
+               r.name as rule_name, r.severity, r.metric_type, r.comparison, r.threshold
         FROM notifications n
         JOIN alert_events e ON n.alert_id = e.id
         JOIN alert_rules r ON e.rule_id = r.id
