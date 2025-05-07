@@ -37,7 +37,7 @@ def send_email_notification(rule, host, value, message, recipients):
         msg = MIMEMultipart()
         msg['From'] = from_email
         msg['To'] = recipients
-        msg['Subject'] = f"ALERT [{rule['severity'].upper()}]: {rule['name']} - {host}"
+        msg['Subject'] = f"ALERT [{rule['severity'].upper()}]: {rule['name']}"
         
         # Email body
         body = f"""
