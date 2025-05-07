@@ -147,13 +147,17 @@ def get_alerts():
     cursor = db.cursor(dictionary=True)
     
     # Build query with optional filters
+
     query = """
-        SELECT e.id, e.rule_id, e.host, e.status, e.value, 
-               e.triggered_at, e.resolved_at, e.message, r.name as rule_name, r.comparison, r.threshold, r.metric_type
-        FROM alert_events e
-        JOIN alert_rules r ON e.rule_id = r.id
+    SELECT e.id, e.rule_id, e.host, e.status, e.value, 
+           e.triggered_at, e.resolved_at, e.message, 
+           COALESCE(r.name, 'Deleted Rule') as rule_name, 
+           r.comparison, r.threshold, r.metric_type,
+           r.severity
+    FROM alert_events e
+    LEFT JOIN alert_rules r ON e.rule_id = r.id
     """
-    
+
     conditions = []
     params = []
     

@@ -166,14 +166,24 @@ def resolve_alert_if_needed(rule, host, current_value):
 
 def generate_alert_message(rule, host, value):
     """Generate an alert message based on the rule and current value."""
-    metric_name = rule['metric_type'].replace('.', ' ').title()
-    comparison_text = {
-        'above': 'is above',
-        'below': 'is below',
-        'equal': 'equals'
-    }.get(rule['comparison'], 'matches')
+    # Format the metric name (replace dots with spaces, ALL CAPS)
+    metric_name = rule['metric_type'].replace('.', ' ').upper()
     
-    return f"{metric_name} on {host} {comparison_text} threshold: {value} (threshold: {rule['threshold']})"
+    # Get comparison symbol
+    comparison_symbol = {
+        'above': '>',
+        'below': '<',
+        'equal': '='
+    }.get(rule['comparison'], '≠')
+    
+    # Format the value with appropriate units
+    formatted_value = f"{value}%" if 'percent' in rule['metric_type'] else str(value)
+    
+    # Format the threshold with the same units
+    formatted_threshold = f"{rule['threshold']}%" if 'percent' in rule['metric_type'] else str(rule['threshold'])
+    
+    # Format the message with HTML formatting to match frontend
+    return f"{metric_name}: <strong>{formatted_value}</strong> {comparison_symbol} {formatted_threshold}"
 
 def process_metric_for_alerts(measurement, host, fields, timestamp):
     """Process a single metric for alerts in real-time."""
