@@ -1,6 +1,7 @@
 """Simplified alert detection and evaluation engine."""
 import uuid
 from flask import current_app
+import datetime
 from app.mysql import get_db
 from app.alerts.rules import get_all_rules, get_rules_for_measurement
 from app.alerts.notification import send_alert_notification
