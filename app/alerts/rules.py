@@ -38,7 +38,7 @@ def get_rules_for_measurement(measurement):
                     if rule.get('enabled', False) is True and 
                     rule['metric_type'].startswith(f"{measurement}.")]
     
-    current_app.logger.info(f"Found {len(enabled_rules)} enabled rules out of {len(all_rules)} total rules for measurement {measurement}")
+    #current_app.logger.info(f"Found {len(enabled_rules)} enabled rules out of {len(all_rules)} total rules for measurement {measurement}")
     return enabled_rules
 
 def get_rule_by_id(rule_id):

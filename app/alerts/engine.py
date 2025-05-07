@@ -180,7 +180,7 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
     try:
         # Get all rules for this measurement
         rules = get_rules_for_measurement(measurement)
-        current_app.logger.info(f"Found {len(rules)} enabled rules for {measurement} on host {host}")
+        #current_app.logger.info(f"Found {len(rules)} enabled rules for {measurement} on host {host}")
         
         for rule in rules:
             current_app.logger.info(f"Processing rule '{rule['name']}' (ID: {rule['id']}, enabled: {rule['enabled']})")

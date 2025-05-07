@@ -22,7 +22,7 @@ def influxdb_webhook():
                     line
                 )
                 if match:
-                    current_app.logger.info(f"Parsed metric: {match.group('measurement')} for {match.group('host')}")
+                    #current_app.logger.info(f"Parsed metric: {match.group('measurement')} for {match.group('host')}")
                     measurement = match.group("measurement")
                     host = match.group("host")
                     fields_str = match.group("fields")
