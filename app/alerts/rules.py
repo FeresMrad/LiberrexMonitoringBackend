@@ -189,7 +189,16 @@ def update_rule(rule_id, updates):
             if 'email_duration_minutes' in updates:
                 fields.append("email_duration_minutes = %s")
                 params.append(updates['email_duration_minutes'])
-            
+
+            # Handle SMS threshold fields
+            if 'sms_threshold' in updates:
+                fields.append("sms_threshold = %s")
+                params.append(updates['sms_threshold'])
+    
+            if 'sms_duration_minutes' in updates:
+                fields.append("sms_duration_minutes = %s")
+                params.append(updates['sms_duration_minutes'])
+
             if fields:
                 query = f"UPDATE alert_rules SET {', '.join(fields)} WHERE id = %s"
                 params.append(rule_id)
