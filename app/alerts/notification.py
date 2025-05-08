@@ -4,6 +4,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from flask import current_app
+from twilio.rest import Client
 
 def send_alert_notification(rule, host, value, message):
     """Send notifications for a triggered alert."""
@@ -16,6 +17,51 @@ def send_alert_notification(rule, host, value, message):
         recipients = current_app.config.get('ALERT_EMAIL_RECIPIENTS', '')
         if recipients:
             send_email_notification(rule, host, value, message, recipients)
+    
+    # Send SMS for critical severity (when SMS is enabled)
+    if severity == 'critical' and notifications.get('sms_enabled', False):
+        # Use global config for recipients
+        recipients = current_app.config.get('TWILIO_TO_NUMBERS', '')
+        if recipients:
+            send_sms_notification(rule, host, value, message, recipients)
+
+def send_sms_notification(rule, host, value, message, recipients):
+    """Send an SMS notification for an alert."""
+    try:
+        # Get SMS settings from config
+        account_sid = current_app.config.get('TWILIO_ACCOUNT_SID')
+        auth_token = current_app.config.get('TWILIO_AUTH_TOKEN')
+        from_number = current_app.config.get('TWILIO_FROM_NUMBER')
+        
+        if not account_sid or not auth_token or not from_number:
+            current_app.logger.error("Twilio settings not configured")
+            return
+
+        host_display_name = get_host_display_name(host)
+        
+        # Initialize Twilio client
+        client = Client(account_sid, auth_token)
+        
+        # Create SMS message - keep it concise for SMS
+        sms_body = f"ALERT [{rule['severity'].upper()}]: {rule['name']}\n"
+        sms_body += f"Host: {host_display_name}\n"
+        sms_body += f"Value: {value}\n"
+        sms_body += f"Threshold: {rule['threshold']}"
+        
+        # Send to each recipient
+        for recipient in recipients.split(','):
+            recipient = recipient.strip()
+            if recipient:
+                client.messages.create(
+                    body=sms_body,
+                    from_=from_number,
+                    to=recipient
+                )
+        
+        current_app.logger.info(f"Alert SMS sent for {rule['name']} on {host}")
+    
+    except Exception as e:
+        current_app.logger.error(f"Error sending SMS notification: {e}")
 
 def send_email_notification(rule, host, value, message, recipients):
     """Send an email notification for an alert."""

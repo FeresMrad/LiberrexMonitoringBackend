@@ -66,6 +66,13 @@ def add_rule():
         email_threshold = data.get('email_threshold')
         email_duration_minutes = data.get('email_duration_minutes')
     
+    # Handle SMS threshold and duration
+    sms_threshold = None
+    sms_duration_minutes = None
+    if sms_enabled:
+        sms_threshold = data.get('sms_threshold')
+        sms_duration_minutes = data.get('sms_duration_minutes')
+
     # Create rule
     try:
         rule_id = create_rule(
@@ -78,7 +85,9 @@ def add_rule():
             severity=severity,
             min_breach_count=min_breach_count,
             email_threshold=email_threshold,
-            email_duration_minutes=email_duration_minutes
+            email_duration_minutes=email_duration_minutes,
+            sms_threshold=sms_threshold,
+            sms_duration_minutes=sms_duration_minutes
         )
         
         # Save notification settings
@@ -86,7 +95,8 @@ def add_rule():
             'notifications': {
                 'email_enabled': email_enabled,
                 'sms_enabled': sms_enabled,
-                'email_recipients': ''  # Will be configured in backend
+                'email_recipients': '',  # Will be configured in backend
+                'sms_recipients':''
             }
         })
         

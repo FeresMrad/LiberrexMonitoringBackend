@@ -18,6 +18,12 @@ class Config:
     INFLUXDB_PASSWORD = os.getenv('INFLUXDB_PASSWORD')
     INFLUXDB_DATABASE = os.getenv('INFLUXDB_DATABASE')
 
+    # Twilio configuration
+    TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
+    TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
+    TWILIO_FROM_NUMBER = os.getenv('TWILIO_FROM_NUMBER')
+    TWILIO_TO_NUMBERS = os.getenv('TWILIO_TO_NUMBERS')
+
     # Mail configuration
     SMTP_SERVER = os.getenv('SMTP_SERVER')
     SMTP_PORT = int(os.getenv('SMTP_PORT', 587))

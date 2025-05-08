@@ -49,6 +49,8 @@ def record_last_value(rule, host, value, timestamp):
             'last_value': None, 
             'last_check': None, 
             'breach_count': 0,
+            'sms_breach_count': 0,
+            'last_sms_sent': None,
             'last_email_sent': None,
             'email_breach_count': 0  # New counter for email threshold breaches
         }
@@ -72,6 +74,9 @@ def record_last_value(rule, host, value, timestamp):
     # Also check email threshold if configured
     check_email_threshold_breach(rule, host, value)
     
+    # Check SMS threshold if configured
+    check_sms_threshold_breach(rule, host, value)
+
     # Update with new value
     alert_state[rule_id][host]['last_value'] = value
     alert_state[rule_id][host]['last_check'] = timestamp
@@ -127,6 +132,57 @@ def is_email_alert_triggered(rule, host):
     # Email alert is triggered if we've reached the required breach count
     return current_count >= required_count
 
+def check_sms_threshold_breach(rule, host, value):
+    """Check and update SMS threshold breach count."""
+    rule_id = rule['id']
+    
+    # Only process if SMS notification is enabled and threshold is set
+    notifications = rule.get('notifications', {})
+    if not notifications.get('sms_enabled', False) or rule.get('sms_threshold') is None:
+        return
+    
+    # Get the SMS threshold value
+    sms_threshold = float(rule['sms_threshold'])
+    
+    # Get the minimum breach count needed for SMS notifications
+    sms_min_breach_count = rule.get('sms_duration_minutes', 1) or 1
+    
+    # Check if SMS threshold is breached
+    is_sms_breached = is_threshold_breached(rule, value, sms_threshold)
+    
+    if is_sms_breached:
+        # Increment SMS breach count
+        alert_state[rule_id][host]['sms_breach_count'] += 1
+        current_app.logger.info(
+            f"SMS breach count for rule {rule_id}, host {host}: "
+            f"{alert_state[rule_id][host]['sms_breach_count']}/{sms_min_breach_count}"
+        )
+    else:
+        # Reset SMS breach count if threshold is no longer breached
+        if alert_state[rule_id][host].get('sms_breach_count', 0) > 0:
+            current_app.logger.info(f"Resetting SMS breach count for rule {rule_id}, host {host}")
+            alert_state[rule_id][host]['sms_breach_count'] = 0
+
+def is_sms_alert_triggered(rule, host):
+    """Check if SMS alert conditions are met (both threshold and duration)."""
+    rule_id = rule['id']
+    
+    # Only proceed if SMS notification is enabled and threshold is set
+    notifications = rule.get('notifications', {})
+    if not notifications.get('sms_enabled', False) or rule.get('sms_threshold') is None:
+        return False
+    
+    # Check if we have state for this rule/host
+    if rule_id not in alert_state or host not in alert_state[rule_id]:
+        return False
+    
+    # Get current breach count and required minimum
+    current_count = alert_state[rule_id][host].get('sms_breach_count', 0)
+    required_count = rule.get('sms_duration_minutes', 1) or 1
+    
+    # SMS alert is triggered if we've reached the required breach count
+    return current_count >= required_count
+
 def handle_alert_trigger(rule, host, value, is_email_alert=False):
     """Handle the alert trigger by creating a new alert event."""
     db = get_db()
@@ -153,7 +209,6 @@ def handle_alert_trigger(rule, host, value, is_email_alert=False):
             cursor.close()
             send_email_for_existing_alert(rule, host, value, alert_id, message)
             return
-        
         cursor.close()
         return
     
@@ -181,6 +236,10 @@ def handle_alert_trigger(rule, host, value, is_email_alert=False):
         # Send email notifications if this is an email alert or if no separate email threshold is defined
         if is_email_alert or (rule.get('email_threshold') is None and rule.get('notifications', {}).get('email_enabled', False)):
             send_alert_notification(rule, host, value, message)
+
+        if is_sms_alert or (rule.get('sms_threshold') is None and rule.get('notifications', {}).get('sms_enabled', False)):
+            send_alert_notification(rule, host, value, message)
+
     except Exception as e:
         current_app.logger.error(f"Database error inserting alert: {e}", exc_info=True)
         db.rollback()
@@ -220,6 +279,40 @@ def send_email_for_existing_alert(rule, host, value, alert_id, message):
             
     except Exception as e:
         current_app.logger.error(f"Error sending email for existing alert: {e}", exc_info=True)
+
+def send_sms_for_existing_alert(rule, host, value, alert_id, message):
+    """Send an SMS notification for an existing alert with cooldown period."""
+    try:
+        rule_id = rule['id']
+        
+        # Check if we've already sent an SMS recently (e.g., within 30 minutes)
+        cooldown_minutes = 30
+        current_time = datetime.datetime.now()
+        
+        if (rule_id in alert_state and 
+            host in alert_state[rule_id] and 
+            alert_state[rule_id][host].get('last_sms_sent')):
+            
+            last_sent = alert_state[rule_id][host]['last_sms_sent']
+            time_diff = (current_time - last_sent).total_seconds() / 60
+            
+            if time_diff < cooldown_minutes:
+                current_app.logger.info(
+                    f"Skipping SMS for alert {alert_id} - cooldown period not elapsed "
+                    f"({time_diff:.1f}/{cooldown_minutes} minutes)"
+                )
+                return
+                
+        # Send the SMS
+        current_app.logger.info(f"Sending SMS for existing alert {alert_id}")
+        send_alert_notification(rule, host, value, message)
+        
+        # Update the last sent timestamp
+        if rule_id in alert_state and host in alert_state[rule_id]:
+            alert_state[rule_id][host]['last_sms_sent'] = current_time
+            
+    except Exception as e:
+        current_app.logger.error(f"Error sending SMS for existing alert: {e}", exc_info=True)
 
 def create_notifications_for_alert(cursor, alert_id, rule):
     """Create notifications for all users who should be notified about this alert."""
@@ -297,7 +390,7 @@ def resolve_alert_if_needed(rule, host, current_value):
         db.commit()
         cursor.close()
 
-def generate_alert_message(rule, host, value, is_email=False):
+def generate_alert_message(rule, host, value, is_email=False, is_sms=False):
     """Generate an alert message based on the rule and current value."""
     # Format the metric name (replace dots with spaces, ALL CAPS)
     metric_name = rule['metric_type'].replace('.', ' ').upper()
@@ -315,6 +408,9 @@ def generate_alert_message(rule, host, value, is_email=False):
     # For email alerts, use the email threshold
     if is_email and rule.get('email_threshold') is not None:
         threshold = rule['email_threshold']
+    # For SMS alerts, use the SMS threshold
+    elif is_sms and rule.get('sms_threshold') is not None:
+        threshold = rule['sms_threshold']
     else:
         threshold = rule['threshold']
     
@@ -383,6 +479,12 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
                     current_app.logger.info(f"TRIGGERING EMAIL ALERT for rule {rule['id']}, host {host}, value {current_value}")
                     # Handle as an email alert
                     handle_alert_trigger(rule, host, current_value, is_email_alert=True)
+
+            # Check if SMS alert conditions are met
+            if rule.get('notifications', {}).get('sms_enabled', False) and rule.get('sms_threshold') is not None:
+                if is_sms_alert_triggered(rule, host):
+                    current_app.logger.info(f"TRIGGERING SMS ALERT for rule {rule['id']}, host {host}, value {current_value}")
+                    handle_alert_trigger(rule, host, current_value, is_sms_alert=True)
             
             # Resolve alerts if no thresholds are breached anymore
             resolve_alert_if_needed(rule, host, current_value)

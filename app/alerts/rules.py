@@ -95,7 +95,7 @@ def get_rule_notifications(rule_id):
     cursor = db.cursor(dictionary=True)
     
     cursor.execute("""
-        SELECT email_enabled, email_recipients
+        SELECT email_enabled, email_recipients, sms_enabled, sms_recipients
         FROM alert_notifications
         WHERE rule_id = %s
     """, (rule_id,))
@@ -106,15 +106,19 @@ def get_rule_notifications(rule_id):
     if not notification:
         return {
             'email_enabled': False,
-            'email_recipients': ''
+            'email_recipients': '',
+            'sms_enabled': False,
+            'sms_recipients': ''
         }
     
     # Convert tinyint to boolean
     notification['email_enabled'] = bool(notification['email_enabled'])
+    notification['sms_enabled'] = bool(notification['sms_enabled'])
     return notification
 
 def create_rule(name, description, metric_type, comparison, threshold, targets, 
-                severity='warning', min_breach_count=1, email_threshold=None, email_duration_minutes=None):
+                severity='warning', min_breach_count=1, email_threshold=None, 
+                email_duration_minutes=None, sms_threshold=None, sms_duration_minutes=None):
     """Create a new alert rule."""
     rule_id = str(uuid.uuid4())
     
@@ -122,28 +126,23 @@ def create_rule(name, description, metric_type, comparison, threshold, targets,
         db = get_db()
         cursor = db.cursor()
         
-        # Insert rule with the new email threshold fields
+        # Insert rule with the new SMS threshold fields
         cursor.execute("""
             INSERT INTO alert_rules 
             (id, name, description, metric_type, comparison, threshold, enabled, severity, 
-             duration_minutes, email_threshold, email_duration_minutes)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s)
+             duration_minutes, email_threshold, email_duration_minutes, 
+             sms_threshold, sms_duration_minutes)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s, %s, %s)
         """, (
             rule_id, name, description, metric_type, comparison, threshold, 
-            severity, min_breach_count, email_threshold, email_duration_minutes
+            severity, min_breach_count, email_threshold, email_duration_minutes,
+            sms_threshold, sms_duration_minutes
         ))
-        
-        # Insert targets
-        for target in targets:
-            cursor.execute("""
-                INSERT INTO alert_targets (rule_id, target_type, target_id)
-                VALUES (%s, %s, %s)
-            """, (rule_id, target['type'], target['id']))
         
         # Create default notifications
         cursor.execute("""
-            INSERT INTO alert_notifications (rule_id, email_enabled, email_recipients)
-            VALUES (%s, FALSE, '')
+            INSERT INTO alert_notifications (rule_id, email_enabled, email_recipients, sms_enabled, sms_recipients)
+            VALUES (%s, FALSE, '', FALSE, '')
         """, (rule_id,))
         
         db.commit()
