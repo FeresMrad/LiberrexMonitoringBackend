@@ -183,7 +183,7 @@ def is_sms_alert_triggered(rule, host):
     # SMS alert is triggered if we've reached the required breach count
     return current_count >= required_count
 
-def handle_alert_trigger(rule, host, value, is_email_alert=False):
+def handle_alert_trigger(rule, host, value, is_email_alert=False, is_sms_alert=False):
     """Handle the alert trigger by creating a new alert event."""
     db = get_db()
     cursor = db.cursor(dictionary=True)
@@ -208,6 +208,11 @@ def handle_alert_trigger(rule, host, value, is_email_alert=False):
             message = generate_alert_message(rule, host, value, is_email=True)
             cursor.close()
             send_email_for_existing_alert(rule, host, value, alert_id, message)
+            return
+        if is_sms_alert:
+            message = generate_alert_message(rule, host, value, is_sms=True)
+            cursor.close()
+            send_sms_for_existing_alert(rule, host, value, alert_id, message)
             return
         cursor.close()
         return
