@@ -389,8 +389,7 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
                     handle_alert_trigger(rule, host, current_value, is_email_alert=True)
             
             # Resolve alerts if no thresholds are breached anymore
-            else:
-                resolve_alert_if_needed(rule, host, current_value)
+            resolve_alert_if_needed(rule, host, current_value)
     except Exception as e:
         current_app.logger.error(f"Error processing metric for alerts: {e}", exc_info=True)
 
