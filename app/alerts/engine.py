@@ -7,7 +7,7 @@ from app.alerts.rules import get_all_rules, get_rules_for_measurement
 from app.alerts.notification import send_alert_notification
 
 # Global in-memory store for last seen values
-# Format: {rule_id: {host: {'last_value': value, 'last_check': timestamp}}}
+# Format: {rule_id: {host: {'last_value': value, 'last_check': timestamp, 'breach_count': 0}}}
 alert_state = {}
 
 def host_matches_rule(rule, host):
@@ -35,14 +35,30 @@ def is_threshold_breached(rule, value):
         return False
 
 def record_last_value(rule, host, value, timestamp):
-    """Record the last value for a host/rule combination."""
+    """Record the last value and update breach count for a host/rule combination."""
     rule_id = rule['id']
     
     if rule_id not in alert_state:
         alert_state[rule_id] = {}
         
     if host not in alert_state[rule_id]:
-        alert_state[rule_id][host] = {'last_value': None, 'last_check': None}
+        alert_state[rule_id][host] = {'last_value': None, 'last_check': None, 'breach_count': 0}
+    
+    # Get the minimum breach count needed for this rule (using duration_minutes field)
+    min_breach_count = rule.get('duration_minutes', 1) or 1  # Default to 1 if not specified or zero
+    
+    # Check if threshold is breached
+    is_breached = is_threshold_breached(rule, value)
+    
+    if is_breached:
+        # Increment breach count
+        alert_state[rule_id][host]['breach_count'] += 1
+        current_app.logger.info(f"Breach count for rule {rule_id}, host {host}: {alert_state[rule_id][host]['breach_count']}/{min_breach_count}")
+    else:
+        # Reset breach count if threshold is no longer breached
+        if alert_state[rule_id][host]['breach_count'] > 0:
+            current_app.logger.info(f"Resetting breach count for rule {rule_id}, host {host}")
+            alert_state[rule_id][host]['breach_count'] = 0
     
     # Update with new value
     alert_state[rule_id][host]['last_value'] = value
@@ -190,13 +206,11 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
     try:
         # Get all rules for this measurement
         rules = get_rules_for_measurement(measurement)
-        #current_app.logger.info(f"Found {len(rules)} enabled rules for {measurement} on host {host}")
         
         for rule in rules:
             current_app.logger.info(f"Processing rule '{rule['name']}' (ID: {rule['id']}, enabled: {rule['enabled']})")
             
-            # Double-check the rule is enabled - this is redundant as get_rules_for_measurement already filters,
-            # but adding this for safety
+            # Double-check the rule is enabled
             if not bool(rule.get('enabled', False)):
                 current_app.logger.info(f"Skipping disabled rule {rule['id']}")
                 continue
@@ -222,18 +236,23 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
             current_value = fields[field_name]
             current_app.logger.info(f"Current value for {field_name}: {current_value}, threshold: {rule['threshold']}")
             
-            # Record the last value for this rule/host
-            record_last_value(rule, host, current_value, timestamp)
-            
             # Check if threshold is breached
             is_breached = is_threshold_breached(rule, current_value)
-            current_app.logger.info(f"Threshold breached: {is_breached}")
             
-            if is_breached:
-                # Immediately trigger alert if threshold is breached
-                current_app.logger.info(f"TRIGGERING ALERT for rule {rule['id']}, host {host}, value {current_value}")
+            # Record the value and update breach count
+            record_last_value(rule, host, current_value, timestamp)
+            
+            # Get current breach count and minimum required
+            breach_count = alert_state[rule['id']][host]['breach_count']
+            min_breach_count = rule.get('duration_minutes', 1) or 1  # Default to 1 if not specified or zero
+            
+            current_app.logger.info(f"Threshold breached: {is_breached}, count: {breach_count}/{min_breach_count}")
+            
+            if is_breached and breach_count >= min_breach_count:
+                # Only trigger alert if we've reached minimum breach count
+                current_app.logger.info(f"TRIGGERING ALERT for rule {rule['id']}, host {host}, value {current_value} after {breach_count} breaches")
                 handle_alert_trigger(rule, host, current_value)
-            else:
+            elif not is_breached:
                 # Resolve any active alerts
                 resolve_alert_if_needed(rule, host, current_value)
     except Exception as e:

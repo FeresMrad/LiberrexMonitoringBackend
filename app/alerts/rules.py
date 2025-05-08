@@ -10,7 +10,7 @@ def get_all_rules():
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, enabled, created_at, severity
+               threshold, enabled, created_at, severity, duration_minutes
         FROM alert_rules
     """)
     
@@ -38,7 +38,6 @@ def get_rules_for_measurement(measurement):
                     if rule.get('enabled', False) is True and 
                     rule['metric_type'].startswith(f"{measurement}.")]
     
-    #current_app.logger.info(f"Found {len(enabled_rules)} enabled rules out of {len(all_rules)} total rules for measurement {measurement}")
     return enabled_rules
 
 def get_rule_by_id(rule_id):
@@ -48,7 +47,7 @@ def get_rule_by_id(rule_id):
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, enabled, created_at, severity 
+               threshold, enabled, created_at, severity, duration_minutes
         FROM alert_rules 
         WHERE id = %s
     """, (rule_id,))
@@ -112,7 +111,7 @@ def get_rule_notifications(rule_id):
     notification['email_enabled'] = bool(notification['email_enabled'])
     return notification
 
-def create_rule(name, description, metric_type, comparison, threshold, targets, severity='warning'):
+def create_rule(name, description, metric_type, comparison, threshold, targets, severity='warning', min_breach_count=1):
     """Create a new alert rule."""
     rule_id = str(uuid.uuid4())
     
@@ -120,13 +119,13 @@ def create_rule(name, description, metric_type, comparison, threshold, targets, 
         db = get_db()
         cursor = db.cursor()
         
-        # Insert rule - explicitly set enabled to TRUE
+        # Insert rule - explicitly set enabled to TRUE, and use min_breach_count for duration_minutes
         cursor.execute("""
             INSERT INTO alert_rules 
             (id, name, description, metric_type, comparison, threshold, enabled, severity, duration_minutes)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, 0)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s)
         """, (
-            rule_id, name, description, metric_type, comparison, threshold, severity
+            rule_id, name, description, metric_type, comparison, threshold, severity, min_breach_count
         ))
         
         # Insert targets
@@ -143,7 +142,7 @@ def create_rule(name, description, metric_type, comparison, threshold, targets, 
         """, (rule_id,))
         
         db.commit()
-        current_app.logger.info(f"Created new rule {rule_id} with enabled=TRUE")
+        current_app.logger.info(f"Created new rule {rule_id} with enabled=TRUE, min_breach_count={min_breach_count}")
         return rule_id
     except Exception as e:
         current_app.logger.error(f"Error creating alert rule: {e}")
@@ -158,7 +157,7 @@ def update_rule(rule_id, updates):
         
         # Update basic rule properties
         if any(k in updates for k in ['name', 'description', 'metric_type', 'comparison', 
-                                      'threshold', 'enabled', 'severity']):
+                                      'threshold', 'enabled', 'severity', 'min_breach_count']):
             fields = []
             params = []
             
@@ -170,6 +169,12 @@ def update_rule(rule_id, updates):
                     if field == 'enabled':
                         current_app.logger.info(f"Updating rule {rule_id} enabled status to {updates[field]}")
                     params.append(updates[field])
+            
+            # Handle min_breach_count by updating duration_minutes
+            if 'min_breach_count' in updates:
+                fields.append("duration_minutes = %s")
+                params.append(updates['min_breach_count'])
+                current_app.logger.info(f"Updating rule {rule_id} min_breach_count to {updates['min_breach_count']}")
             
             if fields:
                 query = f"UPDATE alert_rules SET {', '.join(fields)} WHERE id = %s"

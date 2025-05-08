@@ -54,6 +54,9 @@ def add_rule():
     else:
         severity = 'info'
     
+    # Handle breach duration/count
+    min_breach_count = data.get('min_breach_count', 1)
+    
     # Create rule
     try:
         rule_id = create_rule(
@@ -63,7 +66,8 @@ def add_rule():
             comparison=data['comparison'],
             threshold=float(data['threshold']),
             targets=data.get('targets', [{'type': 'all', 'id': '*'}]),
-            severity=severity  # Pass the derived severity
+            severity=severity,
+            min_breach_count=min_breach_count
         )
         
         # Save notification settings
