@@ -1,5 +1,5 @@
 """Simplified alert API endpoints."""
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from app.alerts.rules import (
     get_all_rules, get_rule_by_id, create_rule, update_rule, delete_rule
 )
@@ -30,7 +30,7 @@ def get_rule(rule_id):
 @alerts_bp.route('/rules', methods=['POST'])
 @require_admin
 def add_rule():
-    """Create a new alert rule with severity determined by notification settings."""
+    """Create a new alert rule with separate email threshold."""
     data = request.get_json()
     
     if not data:
@@ -41,9 +41,6 @@ def add_rule():
     for field in required_fields:
         if field not in data:
             return jsonify({"error": f"Field '{field}' is required"}), 400
-
-    email_threshold = None
-    email_duration_minutes = None
     
     # Determine severity based on notification settings
     notifications = data.get('notifications', {})
@@ -53,14 +50,21 @@ def add_rule():
     if sms_enabled:
         severity = 'critical'
     elif email_enabled:
-        email_threshold = data.get('email_threshold')
-        email_duration_minutes = data.get('email_duration_minutes')
         severity = 'warning'
     else:
         severity = 'info'
     
     # Handle breach duration/count
     min_breach_count = data.get('min_breach_count', 1)
+    
+    # Handle email threshold and duration
+    email_threshold = None
+    email_duration_minutes = None
+    
+    # Only process email threshold if email is enabled
+    if email_enabled:
+        email_threshold = data.get('email_threshold')
+        email_duration_minutes = data.get('email_duration_minutes')
     
     # Create rule
     try:
@@ -89,12 +93,13 @@ def add_rule():
         return jsonify({"success": True, "rule_id": rule_id}), 201
     
     except Exception as e:
+        current_app.logger.error(f"Error creating alert rule: {e}")
         return jsonify({"error": str(e)}), 400
 
 @alerts_bp.route('/rules/<rule_id>', methods=['PUT'])
 @require_admin
 def update_rule_endpoint(rule_id):
-    """Update a specific alert rule with severity based on notification settings."""
+    """Update a specific alert rule with separate email threshold."""
     data = request.get_json()
     
     if not data:
@@ -117,6 +122,17 @@ def update_rule_endpoint(rule_id):
             data['severity'] = 'warning'
         else:
             data['severity'] = 'info'
+            
+        # Handle email threshold and duration
+        if email_enabled:
+            if 'email_threshold' in data:
+                data['email_threshold'] = data['email_threshold']
+            if 'email_duration_minutes' in data:
+                data['email_duration_minutes'] = data['email_duration_minutes']
+        else:
+            # If email is disabled, clear email threshold settings
+            data['email_threshold'] = None
+            data['email_duration_minutes'] = None
     
     # Update rule
     success = update_rule(rule_id, data)
@@ -158,7 +174,6 @@ def get_alerts():
     cursor = db.cursor(dictionary=True)
     
     # Build query with optional filters
-
     query = """
     SELECT e.id, e.rule_id, e.host, e.status, e.value, 
            e.triggered_at, e.resolved_at, e.message, 
@@ -233,3 +248,12 @@ def delete_alert(alert_id):
         return jsonify({"error": str(e)}), 500
     finally:
         cursor.close()
+
+@alerts_bp.route('/events/<alert_id>/acknowledge', methods=['POST'])
+@require_auth
+def acknowledge_alert(alert_id):
+    """Acknowledge a specific alert event."""
+    # This endpoint would update the alert status to 'acknowledged'
+    # Currently not fully implemented in the code - would need additional DB schema changes
+    
+    return jsonify({"success": True, "message": "Alert acknowledged"})

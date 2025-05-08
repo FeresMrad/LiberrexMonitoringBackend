@@ -10,7 +10,8 @@ def get_all_rules():
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, enabled, created_at, severity, duration_minutes
+               threshold, enabled, created_at, severity, duration_minutes,
+               email_threshold, email_duration_minutes
         FROM alert_rules
     """)
     
@@ -47,7 +48,8 @@ def get_rule_by_id(rule_id):
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, enabled, created_at, severity, duration_minutes
+               threshold, enabled, created_at, severity, duration_minutes,
+               email_threshold, email_duration_minutes
         FROM alert_rules 
         WHERE id = %s
     """, (rule_id,))
@@ -160,7 +162,8 @@ def update_rule(rule_id, updates):
         
         # Update basic rule properties
         if any(k in updates for k in ['name', 'description', 'metric_type', 'comparison', 
-                                      'threshold', 'enabled', 'severity', 'min_breach_count']):
+                                     'threshold', 'enabled', 'severity', 'min_breach_count',
+                                     'email_threshold', 'email_duration_minutes']):
             fields = []
             params = []
             
@@ -178,6 +181,15 @@ def update_rule(rule_id, updates):
                 fields.append("duration_minutes = %s")
                 params.append(updates['min_breach_count'])
                 current_app.logger.info(f"Updating rule {rule_id} min_breach_count to {updates['min_breach_count']}")
+            
+            # Handle email threshold fields
+            if 'email_threshold' in updates:
+                fields.append("email_threshold = %s")
+                params.append(updates['email_threshold'])
+                
+            if 'email_duration_minutes' in updates:
+                fields.append("email_duration_minutes = %s")
+                params.append(updates['email_duration_minutes'])
             
             if fields:
                 query = f"UPDATE alert_rules SET {', '.join(fields)} WHERE id = %s"
