@@ -49,7 +49,7 @@ def send_email_notification(rule, host, value, message, recipients):
             <p><strong>Severity:</strong> {rule['severity'].upper()}</p>
             <p><strong>Message:</strong> {message}</p>
             <p><strong>Current Value:</strong> {value}</p>
-            <p><strong>Threshold:</strong> {rule['threshold']} ({rule['comparison']})</p>
+            <p><strong>Threshold:</strong> {rule['threshold']}</p>
             <p><strong>Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         </body>
         </html>

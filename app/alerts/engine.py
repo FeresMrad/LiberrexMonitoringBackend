@@ -324,10 +324,6 @@ def generate_alert_message(rule, host, value, is_email=False):
     # Format the message with HTML formatting to match frontend
     message = f"{metric_name}: <strong>{formatted_value}</strong> {comparison_symbol} {formatted_threshold}"
     
-    # For email alerts, add a note about the threshold type
-    if is_email and rule.get('email_threshold') is not None:
-        message += " (Email threshold)"
-    
     return message
 
 def process_metric_for_alerts(measurement, host, fields, timestamp):
