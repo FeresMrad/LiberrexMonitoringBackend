@@ -228,23 +228,27 @@ def update_rule(rule_id, updates):
                 # Update existing
                 cursor.execute("""
                     UPDATE alert_notifications
-                    SET email_enabled = %s, email_recipients = %s
+                    SET email_enabled = %s, email_recipients = %s, sms_enabled = %s, sms_recipients =  %s
                     WHERE rule_id = %s
                 """, (
                     notifications.get('email_enabled', False),
                     notifications.get('email_recipients', ''),
+                    notifications.get('sms_enabled', False),
+                    notifications.get('sms_recipients',''),
                     rule_id
                 ))
             else:
                 # Insert new
                 cursor.execute("""
                     INSERT INTO alert_notifications
-                    (rule_id, email_enabled, email_recipients)
-                    VALUES (%s, %s, %s)
+                    (rule_id, email_enabled, email_recipients, sms_enabled, sms_recipients)
+                    VALUES (%s, %s, %s, %s, %s)
                 """, (
                     rule_id,
                     notifications.get('email_enabled', False),
-                    notifications.get('email_recipients', '')
+                    notifications.get('email_recipients', ''),
+                    notifcations.get('sms_enabled', False),
+                    notifications.get('sms_recipients', '')
                 ))
         
         db.commit()
