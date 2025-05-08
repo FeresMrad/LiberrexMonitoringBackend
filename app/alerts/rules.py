@@ -11,7 +11,7 @@ def get_all_rules():
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
                threshold, enabled, created_at, severity, duration_minutes,
-               email_threshold, email_duration_minutes
+               email_threshold, email_duration_minutes, sms_threshold, sms_duration_minutes
         FROM alert_rules
     """)
     
@@ -49,7 +49,7 @@ def get_rule_by_id(rule_id):
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
                threshold, enabled, created_at, severity, duration_minutes,
-               email_threshold, email_duration_minutes
+               email_threshold, email_duration_minutes, sms_threshold, sms_duration_minutes
         FROM alert_rules 
         WHERE id = %s
     """, (rule_id,))
@@ -162,7 +162,7 @@ def update_rule(rule_id, updates):
         # Update basic rule properties
         if any(k in updates for k in ['name', 'description', 'metric_type', 'comparison', 
                                      'threshold', 'enabled', 'severity', 'min_breach_count',
-                                     'email_threshold', 'email_duration_minutes']):
+                                     'email_threshold', 'email_duration_minutes', 'sms_threshold', 'sms_duration_minutes']):
             fields = []
             params = []
             
