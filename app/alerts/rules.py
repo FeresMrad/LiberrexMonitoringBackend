@@ -111,7 +111,8 @@ def get_rule_notifications(rule_id):
     notification['email_enabled'] = bool(notification['email_enabled'])
     return notification
 
-def create_rule(name, description, metric_type, comparison, threshold, targets, severity='warning', min_breach_count=1):
+def create_rule(name, description, metric_type, comparison, threshold, targets, 
+                severity='warning', min_breach_count=1, email_threshold=None, email_duration_minutes=None):
     """Create a new alert rule."""
     rule_id = str(uuid.uuid4())
     
@@ -119,13 +120,15 @@ def create_rule(name, description, metric_type, comparison, threshold, targets, 
         db = get_db()
         cursor = db.cursor()
         
-        # Insert rule - explicitly set enabled to TRUE, and use min_breach_count for duration_minutes
+        # Insert rule with the new email threshold fields
         cursor.execute("""
             INSERT INTO alert_rules 
-            (id, name, description, metric_type, comparison, threshold, enabled, severity, duration_minutes)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s)
+            (id, name, description, metric_type, comparison, threshold, enabled, severity, 
+             duration_minutes, email_threshold, email_duration_minutes)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s)
         """, (
-            rule_id, name, description, metric_type, comparison, threshold, severity, min_breach_count
+            rule_id, name, description, metric_type, comparison, threshold, 
+            severity, min_breach_count, email_threshold, email_duration_minutes
         ))
         
         # Insert targets

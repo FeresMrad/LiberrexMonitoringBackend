@@ -41,6 +41,9 @@ def add_rule():
     for field in required_fields:
         if field not in data:
             return jsonify({"error": f"Field '{field}' is required"}), 400
+
+    email_threshold = None
+    email_duration_minutes = None
     
     # Determine severity based on notification settings
     notifications = data.get('notifications', {})
@@ -50,6 +53,8 @@ def add_rule():
     if sms_enabled:
         severity = 'critical'
     elif email_enabled:
+        email_threshold = data.get('email_threshold')
+        email_duration_minutes = data.get('email_duration_minutes')
         severity = 'warning'
     else:
         severity = 'info'
@@ -67,7 +72,9 @@ def add_rule():
             threshold=float(data['threshold']),
             targets=data.get('targets', [{'type': 'all', 'id': '*'}]),
             severity=severity,
-            min_breach_count=min_breach_count
+            min_breach_count=min_breach_count,
+            email_threshold=email_threshold,
+            email_duration_minutes=email_duration_minutes
         )
         
         # Save notification settings
