@@ -56,7 +56,7 @@ def record_last_value(rule, host, value, timestamp):
         }
     
     # Get the minimum breach count needed for main threshold
-    min_breach_count = rule.get('breach_count', 1) or 1  # Default to 1 if not specified or zero
+    min_breach_count = rule.get('breach_count')  # Default to 1 if not specified or zero
     
     # Check if main threshold is breached
     is_breached = is_threshold_breached(rule, value)
@@ -94,7 +94,7 @@ def check_email_threshold_breach(rule, host, value):
     email_threshold = float(rule['email_threshold'])
     
     # Get the minimum breach count needed for email notifications
-    email_min_breach_count = rule.get('email_breach_count', 1) or 1
+    email_min_breach_count = rule.get('email_breach_count')
     
     # Check if email threshold is breached
     is_email_breached = is_threshold_breached(rule, value, email_threshold)
@@ -145,7 +145,7 @@ def check_sms_threshold_breach(rule, host, value):
     sms_threshold = float(rule['sms_threshold'])
     
     # Get the minimum breach count needed for SMS notifications
-    sms_min_breach_count = rule.get('sms_breach_count', 1) or 1
+    sms_min_breach_count = rule.get('sms_breach_count')
     
     # Check if SMS threshold is breached
     is_sms_breached = is_threshold_breached(rule, value, sms_threshold)

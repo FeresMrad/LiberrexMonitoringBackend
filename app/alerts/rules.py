@@ -48,7 +48,7 @@ def get_rule_by_id(rule_id):
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, enabled, created_at breach_count,
+               threshold, enabled, created_at, breach_count,
                email_threshold, email_breach_count, sms_threshold, sms_breach_count
         FROM alert_rules 
         WHERE id = %s
