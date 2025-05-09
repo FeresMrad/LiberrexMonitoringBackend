@@ -42,7 +42,7 @@ def add_rule():
         if field not in data:
             return jsonify({"error": f"Field '{field}' is required"}), 400
     
-    # Get notification settings directly - no severity derivation
+    # Get notification settings directly
     notifications = data.get('notifications', {})
     email_enabled = notifications.get('email_enabled', False)
     sms_enabled = notifications.get('sms_enabled', False)
@@ -66,9 +66,6 @@ def add_rule():
         sms_threshold = data.get('sms_threshold')
         sms_duration_minutes = data.get('sms_duration_minutes')
 
-    # Set a default severity value - we'll keep this for backward compatibility
-    # but it won't affect notification behavior anymore
-    severity = "info"
 
     # Create rule
     try:
@@ -79,7 +76,6 @@ def add_rule():
             comparison=data['comparison'],
             threshold=float(data['threshold']),
             targets=data.get('targets', [{'type': 'all', 'id': '*'}]),
-            severity=severity,  # This is now just for backward compatibility
             min_breach_count=min_breach_count,
             email_threshold=email_threshold,
             email_duration_minutes=email_duration_minutes,
@@ -117,7 +113,6 @@ def update_rule_endpoint(rule_id):
     if not rule:
         return jsonify({"error": "Rule not found"}), 404
     
-    # We no longer set severity based on notification settings
     # Just process the updates directly
             
     # Handle email threshold and duration
@@ -187,8 +182,7 @@ def get_alerts():
     SELECT e.id, e.rule_id, e.host, e.status, e.value, 
            e.triggered_at, e.resolved_at, e.message, 
            COALESCE(r.name, 'Deleted Rule') as rule_name, 
-           r.comparison, r.threshold, r.metric_type,
-           r.severity
+           r.comparison, r.threshold, r.metric_type
     FROM alert_events e
     LEFT JOIN alert_rules r ON e.rule_id = r.id
     """

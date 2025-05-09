@@ -357,7 +357,6 @@ def send_alert_websocket_notification(alert_id, rule, host, value, message):
             'host': host,
             'value': value,
             'message': message,
-            'severity': rule.get('severity', 'warning'),
             'comparison': rule['comparison'],
             'threshold': rule['threshold'],
             'metric_type': rule['metric_type'],

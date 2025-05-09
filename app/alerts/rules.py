@@ -10,7 +10,7 @@ def get_all_rules():
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, enabled, created_at, severity, duration_minutes,
+               threshold, enabled, created_at, duration_minutes,
                email_threshold, email_duration_minutes, sms_threshold, sms_duration_minutes
         FROM alert_rules
     """)
@@ -48,7 +48,7 @@ def get_rule_by_id(rule_id):
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, enabled, created_at, severity, duration_minutes,
+               threshold, enabled, created_at duration_minutes,
                email_threshold, email_duration_minutes, sms_threshold, sms_duration_minutes
         FROM alert_rules 
         WHERE id = %s
@@ -117,7 +117,7 @@ def get_rule_notifications(rule_id):
     return notification
 
 def create_rule(name, description, metric_type, comparison, threshold, targets, 
-                severity='warning', min_breach_count=1, email_threshold=None, 
+                min_breach_count=1, email_threshold=None, 
                 email_duration_minutes=None, sms_threshold=None, sms_duration_minutes=None):
     """Create a new alert rule."""
     rule_id = str(uuid.uuid4())
@@ -129,13 +129,13 @@ def create_rule(name, description, metric_type, comparison, threshold, targets,
         # Insert rule with the new SMS threshold fields
         cursor.execute("""
             INSERT INTO alert_rules 
-            (id, name, description, metric_type, comparison, threshold, enabled, severity, 
+            (id, name, description, metric_type, comparison, threshold, enabled, 
              duration_minutes, email_threshold, email_duration_minutes, 
              sms_threshold, sms_duration_minutes)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE %s, %s, %s, %s, %s)
         """, (
             rule_id, name, description, metric_type, comparison, threshold, 
-            severity, min_breach_count, email_threshold, email_duration_minutes,
+            min_breach_count, email_threshold, email_duration_minutes,
             sms_threshold, sms_duration_minutes
         ))
         
@@ -161,13 +161,13 @@ def update_rule(rule_id, updates):
         
         # Update basic rule properties
         if any(k in updates for k in ['name', 'description', 'metric_type', 'comparison', 
-                                     'threshold', 'enabled', 'severity', 'min_breach_count',
+                                     'threshold', 'enabled' 'min_breach_count',
                                      'email_threshold', 'email_duration_minutes', 'sms_threshold', 'sms_duration_minutes']):
             fields = []
             params = []
             
             for field in ['name', 'description', 'metric_type', 'comparison', 
-                         'threshold', 'enabled', 'severity']:
+                         'threshold', 'enabled']:
                 if field in updates:
                     fields.append(f"{field} = %s")
                     # Log when enabled status is changed
