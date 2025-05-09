@@ -41,7 +41,8 @@ def send_sms_notification(rule, host, value, message, recipients):
         sms_body = f"Liberrex Monitoring: {rule['name']}\n"
         sms_body += f"Host: {host_display_name}\n"
         sms_body += f"Value: {value}\n"
-        sms_body += f"Threshold: {rule['threshold']}"
+        sms_body += f"Threshold: {rule['threshold']}\n"
+        sms_body += f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         
         # Send to each recipient
         for recipient in recipients.split(','):
