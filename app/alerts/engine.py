@@ -201,6 +201,7 @@ def handle_alert_trigger(rule, host, value, is_email_alert=False, is_sms_alert=F
         # Alert already exists, don't create a new one
         alert_id = existing_alert['id']
         current_app.logger.info(f"Alert already exists for rule {rule['id']}, host {host} - not creating duplicate")
+        message = generate_alert_message(rule, host, value, is_email=is_email_alert, is_sms=is_sms_alert)
         
         # If this is an email alert trigger for an existing alert,
         # we still want to send the email notification
