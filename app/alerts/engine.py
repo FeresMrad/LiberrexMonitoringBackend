@@ -127,10 +127,10 @@ def is_email_alert_triggered(rule, host):
     
     # Get current breach count and required minimum
     current_count = alert_state[rule_id][host].get('email_breach_count', 0)
-    required_count = rule.get('email_breach_count', 1) or 1
+    required_count = rule.get('email_breach_count')
     
     # Email alert is triggered if we've reached the required breach count
-    return current_count >= required_count
+    return current_count == required_count
 
 def check_sms_threshold_breach(rule, host, value):
     """Check and update SMS threshold breach count."""
@@ -178,10 +178,10 @@ def is_sms_alert_triggered(rule, host):
     
     # Get current breach count and required minimum
     current_count = alert_state[rule_id][host].get('sms_breach_count', 0)
-    required_count = rule.get('sms_breach_count', 1) or 1
+    required_count = rule.get('sms_breach_count')
     
     # SMS alert is triggered if we've reached the required breach count
-    return current_count >= required_count
+    return current_count == required_count
 
 def handle_alert_trigger(rule, host, value, is_email_alert=False, is_sms_alert=False):
     """Handle the alert trigger by creating a new alert event."""
@@ -471,12 +471,12 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
             
             # Get current breach count and minimum required for main threshold
             breach_count = alert_state[rule['id']][host]['breach_count']
-            min_breach_count = rule.get('breach_count', 1) or 1  # Default to 1 if not specified or zero
+            min_breach_count = rule.get('breach_count')  # Default to 1 if not specified or zero
             
             current_app.logger.info(f"Threshold breached: {is_threshold_breached(rule, current_value)}, count: {breach_count}/{min_breach_count}")
             
             # Check if main threshold conditions are met for triggering an alert
-            if is_threshold_breached(rule, current_value) and breach_count >= min_breach_count:
+            if is_threshold_breached(rule, current_value) and breach_count == min_breach_count:
                 # Only trigger alert if we've reached minimum breach count
                 current_app.logger.info(f"TRIGGERING ALERT for rule {rule['id']}, host {host}, value {current_value} after {breach_count} breaches")
                 handle_alert_trigger(rule, host, current_value)
