@@ -10,8 +10,8 @@ def get_all_rules():
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, enabled, created_at, duration_minutes,
-               email_threshold, email_duration_minutes, sms_threshold, sms_duration_minutes
+               threshold, enabled, created_at, breach_count,
+               email_threshold, email_breach_count, sms_threshold, sms_breach_count
         FROM alert_rules
     """)
     
@@ -48,8 +48,8 @@ def get_rule_by_id(rule_id):
     
     cursor.execute("""
         SELECT id, name, description, metric_type, comparison, 
-               threshold, enabled, created_at duration_minutes,
-               email_threshold, email_duration_minutes, sms_threshold, sms_duration_minutes
+               threshold, enabled, created_at breach_count,
+               email_threshold, email_breach_count, sms_threshold, sms_breach_count
         FROM alert_rules 
         WHERE id = %s
     """, (rule_id,))
@@ -118,7 +118,7 @@ def get_rule_notifications(rule_id):
 
 def create_rule(name, description, metric_type, comparison, threshold, targets, 
                 min_breach_count=1, email_threshold=None, 
-                email_duration_minutes=None, sms_threshold=None, sms_duration_minutes=None):
+                email_breach_count=None, sms_threshold=None, sms_breach_count=None):
     """Create a new alert rule."""
     rule_id = str(uuid.uuid4())
     
@@ -130,13 +130,13 @@ def create_rule(name, description, metric_type, comparison, threshold, targets,
         cursor.execute("""
             INSERT INTO alert_rules 
             (id, name, description, metric_type, comparison, threshold, enabled, 
-             duration_minutes, email_threshold, email_duration_minutes, 
-             sms_threshold, sms_duration_minutes)
+             breach_count, email_threshold, email_breach_count, 
+             sms_threshold, sms_breach_count)
             VALUES (%s, %s, %s, %s, %s, %s, TRUE %s, %s, %s, %s, %s)
         """, (
             rule_id, name, description, metric_type, comparison, threshold, 
-            min_breach_count, email_threshold, email_duration_minutes,
-            sms_threshold, sms_duration_minutes
+            min_breach_count, email_threshold, email_breach_count,
+            sms_threshold, sms_breach_count
         ))
         
         # Create default notifications
@@ -162,7 +162,7 @@ def update_rule(rule_id, updates):
         # Update basic rule properties
         if any(k in updates for k in ['name', 'description', 'metric_type', 'comparison', 
                                      'threshold', 'enabled' 'min_breach_count',
-                                     'email_threshold', 'email_duration_minutes', 'sms_threshold', 'sms_duration_minutes']):
+                                     'email_threshold', 'email_breach_count', 'sms_threshold', 'sms_breach_count']):
             fields = []
             params = []
             
@@ -175,9 +175,9 @@ def update_rule(rule_id, updates):
                         current_app.logger.info(f"Updating rule {rule_id} enabled status to {updates[field]}")
                     params.append(updates[field])
             
-            # Handle min_breach_count by updating duration_minutes
+            # Handle min_breach_count by updating breach_count
             if 'min_breach_count' in updates:
-                fields.append("duration_minutes = %s")
+                fields.append("breach_count = %s")
                 params.append(updates['min_breach_count'])
                 current_app.logger.info(f"Updating rule {rule_id} min_breach_count to {updates['min_breach_count']}")
             
@@ -186,18 +186,18 @@ def update_rule(rule_id, updates):
                 fields.append("email_threshold = %s")
                 params.append(updates['email_threshold'])
                 
-            if 'email_duration_minutes' in updates:
-                fields.append("email_duration_minutes = %s")
-                params.append(updates['email_duration_minutes'])
+            if 'email_breach_count' in updates:
+                fields.append("email_breach_count = %s")
+                params.append(updates['email_breach_count'])
 
             # Handle SMS threshold fields
             if 'sms_threshold' in updates:
                 fields.append("sms_threshold = %s")
                 params.append(updates['sms_threshold'])
     
-            if 'sms_duration_minutes' in updates:
-                fields.append("sms_duration_minutes = %s")
-                params.append(updates['sms_duration_minutes'])
+            if 'sms_breach_count' in updates:
+                fields.append("sms_breach_count = %s")
+                params.append(updates['sms_breach_count'])
 
             if fields:
                 query = f"UPDATE alert_rules SET {', '.join(fields)} WHERE id = %s"

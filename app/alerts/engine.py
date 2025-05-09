@@ -56,7 +56,7 @@ def record_last_value(rule, host, value, timestamp):
         }
     
     # Get the minimum breach count needed for main threshold
-    min_breach_count = rule.get('duration_minutes', 1) or 1  # Default to 1 if not specified or zero
+    min_breach_count = rule.get('breach_count', 1) or 1  # Default to 1 if not specified or zero
     
     # Check if main threshold is breached
     is_breached = is_threshold_breached(rule, value)
@@ -94,7 +94,7 @@ def check_email_threshold_breach(rule, host, value):
     email_threshold = float(rule['email_threshold'])
     
     # Get the minimum breach count needed for email notifications
-    email_min_breach_count = rule.get('email_duration_minutes', 1) or 1
+    email_min_breach_count = rule.get('email_breach_count', 1) or 1
     
     # Check if email threshold is breached
     is_email_breached = is_threshold_breached(rule, value, email_threshold)
@@ -127,7 +127,7 @@ def is_email_alert_triggered(rule, host):
     
     # Get current breach count and required minimum
     current_count = alert_state[rule_id][host].get('email_breach_count', 0)
-    required_count = rule.get('email_duration_minutes', 1) or 1
+    required_count = rule.get('email_breach_count', 1) or 1
     
     # Email alert is triggered if we've reached the required breach count
     return current_count >= required_count
@@ -145,7 +145,7 @@ def check_sms_threshold_breach(rule, host, value):
     sms_threshold = float(rule['sms_threshold'])
     
     # Get the minimum breach count needed for SMS notifications
-    sms_min_breach_count = rule.get('sms_duration_minutes', 1) or 1
+    sms_min_breach_count = rule.get('sms_breach_count', 1) or 1
     
     # Check if SMS threshold is breached
     is_sms_breached = is_threshold_breached(rule, value, sms_threshold)
@@ -178,7 +178,7 @@ def is_sms_alert_triggered(rule, host):
     
     # Get current breach count and required minimum
     current_count = alert_state[rule_id][host].get('sms_breach_count', 0)
-    required_count = rule.get('sms_duration_minutes', 1) or 1
+    required_count = rule.get('sms_breach_count', 1) or 1
     
     # SMS alert is triggered if we've reached the required breach count
     return current_count >= required_count
@@ -471,7 +471,7 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
             
             # Get current breach count and minimum required for main threshold
             breach_count = alert_state[rule['id']][host]['breach_count']
-            min_breach_count = rule.get('duration_minutes', 1) or 1  # Default to 1 if not specified or zero
+            min_breach_count = rule.get('breach_count', 1) or 1  # Default to 1 if not specified or zero
             
             current_app.logger.info(f"Threshold breached: {is_threshold_breached(rule, current_value)}, count: {breach_count}/{min_breach_count}")
             

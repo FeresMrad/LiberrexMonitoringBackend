@@ -52,19 +52,19 @@ def add_rule():
     
     # Handle email threshold and duration
     email_threshold = None
-    email_duration_minutes = None
+    email_breach_count = None
     
     # Only process email threshold if email is enabled
     if email_enabled:
         email_threshold = data.get('email_threshold')
-        email_duration_minutes = data.get('email_duration_minutes')
+        email_breach_count = data.get('email_breach_count')
     
     # Handle SMS threshold and duration
     sms_threshold = None
-    sms_duration_minutes = None
+    sms_breach_count = None
     if sms_enabled:
         sms_threshold = data.get('sms_threshold')
-        sms_duration_minutes = data.get('sms_duration_minutes')
+        sms_breach_count = data.get('sms_breach_count')
 
 
     # Create rule
@@ -78,9 +78,9 @@ def add_rule():
             targets=data.get('targets', [{'type': 'all', 'id': '*'}]),
             min_breach_count=min_breach_count,
             email_threshold=email_threshold,
-            email_duration_minutes=email_duration_minutes,
+            email_breach_count=email_breach_count,
             sms_threshold=sms_threshold,
-            sms_duration_minutes=sms_duration_minutes
+            sms_breach_count=sms_breach_count
         )
         
         # Save notification settings
@@ -120,23 +120,23 @@ def update_rule_endpoint(rule_id):
         if data['notifications'].get('email_enabled', False):
             if 'email_threshold' in data:
                 data['email_threshold'] = data['email_threshold']
-            if 'email_duration_minutes' in data:
-                data['email_duration_minutes'] = data['email_duration_minutes']
+            if 'email_breach_count' in data:
+                data['email_breach_count'] = data['email_breach_count']
         else:
             # If email is disabled, clear email threshold settings
             data['email_threshold'] = None
-            data['email_duration_minutes'] = None
+            data['email_breach_count'] = None
             
         # Handle SMS threshold and duration similarly
         if data['notifications'].get('sms_enabled', False):
             if 'sms_threshold' in data:
                 data['sms_threshold'] = data['sms_threshold']
-            if 'sms_duration_minutes' in data:
-                data['sms_duration_minutes'] = data['sms_duration_minutes']
+            if 'sms_breach_count' in data:
+                data['sms_breach_count'] = data['sms_breach_count']
         else:
             # If SMS is disabled, clear SMS threshold settings
             data['sms_threshold'] = None
-            data['sms_duration_minutes'] = None
+            data['sms_breach_count'] = None
     
     # Update rule
     success = update_rule(rule_id, data)
