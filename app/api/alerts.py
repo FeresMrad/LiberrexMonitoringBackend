@@ -30,7 +30,7 @@ def get_rule(rule_id):
 @alerts_bp.route('/rules', methods=['POST'])
 @require_admin
 def add_rule():
-    """Create a new alert rule with separate email threshold."""
+    """Create a new alert rule with separate notification settings."""
     data = request.get_json()
     
     if not data:
@@ -42,17 +42,10 @@ def add_rule():
         if field not in data:
             return jsonify({"error": f"Field '{field}' is required"}), 400
     
-    # Determine severity based on notification settings
+    # Get notification settings directly - no severity derivation
     notifications = data.get('notifications', {})
     email_enabled = notifications.get('email_enabled', False)
     sms_enabled = notifications.get('sms_enabled', False)
-    
-    if sms_enabled:
-        severity = 'critical'
-    elif email_enabled:
-        severity = 'warning'
-    else:
-        severity = 'info'
     
     # Handle breach duration/count
     min_breach_count = data.get('min_breach_count', 1)
@@ -73,6 +66,10 @@ def add_rule():
         sms_threshold = data.get('sms_threshold')
         sms_duration_minutes = data.get('sms_duration_minutes')
 
+    # Set a default severity value - we'll keep this for backward compatibility
+    # but it won't affect notification behavior anymore
+    severity = "info"
+
     # Create rule
     try:
         rule_id = create_rule(
@@ -82,7 +79,7 @@ def add_rule():
             comparison=data['comparison'],
             threshold=float(data['threshold']),
             targets=data.get('targets', [{'type': 'all', 'id': '*'}]),
-            severity=severity,
+            severity=severity,  # This is now just for backward compatibility
             min_breach_count=min_breach_count,
             email_threshold=email_threshold,
             email_duration_minutes=email_duration_minutes,
@@ -96,7 +93,7 @@ def add_rule():
                 'email_enabled': email_enabled,
                 'sms_enabled': sms_enabled,
                 'email_recipients': '',  # Will be configured in backend
-                'sms_recipients':''
+                'sms_recipients': ''
             }
         })
         
@@ -109,7 +106,7 @@ def add_rule():
 @alerts_bp.route('/rules/<rule_id>', methods=['PUT'])
 @require_admin
 def update_rule_endpoint(rule_id):
-    """Update a specific alert rule with separate email threshold."""
+    """Update a specific alert rule."""
     data = request.get_json()
     
     if not data:
@@ -120,21 +117,12 @@ def update_rule_endpoint(rule_id):
     if not rule:
         return jsonify({"error": "Rule not found"}), 404
     
-    # Determine severity if notification settings are provided
-    if 'notifications' in data:
-        notifications = data['notifications']
-        email_enabled = notifications.get('email_enabled', False)
-        sms_enabled = notifications.get('sms_enabled', False)
-        
-        if sms_enabled:
-            data['severity'] = 'critical'
-        elif email_enabled:
-            data['severity'] = 'warning'
-        else:
-            data['severity'] = 'info'
+    # We no longer set severity based on notification settings
+    # Just process the updates directly
             
-        # Handle email threshold and duration
-        if email_enabled:
+    # Handle email threshold and duration
+    if 'notifications' in data:
+        if data['notifications'].get('email_enabled', False):
             if 'email_threshold' in data:
                 data['email_threshold'] = data['email_threshold']
             if 'email_duration_minutes' in data:
@@ -143,6 +131,17 @@ def update_rule_endpoint(rule_id):
             # If email is disabled, clear email threshold settings
             data['email_threshold'] = None
             data['email_duration_minutes'] = None
+            
+        # Handle SMS threshold and duration similarly
+        if data['notifications'].get('sms_enabled', False):
+            if 'sms_threshold' in data:
+                data['sms_threshold'] = data['sms_threshold']
+            if 'sms_duration_minutes' in data:
+                data['sms_duration_minutes'] = data['sms_duration_minutes']
+        else:
+            # If SMS is disabled, clear SMS threshold settings
+            data['sms_threshold'] = None
+            data['sms_duration_minutes'] = None
     
     # Update rule
     success = update_rule(rule_id, data)

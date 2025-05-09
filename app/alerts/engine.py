@@ -204,16 +204,13 @@ def handle_alert_trigger(rule, host, value, is_email_alert=False, is_sms_alert=F
         
         # If this is an email alert trigger for an existing alert,
         # we still want to send the email notification
-        if is_email_alert:
-            message = generate_alert_message(rule, host, value, is_email=True)
-            cursor.close()
-            send_email_for_existing_alert(rule, host, value, alert_id, message)
-            return
-        if is_sms_alert:
-            message = generate_alert_message(rule, host, value, is_sms=True)
-            cursor.close()
-            send_sms_for_existing_alert(rule, host, value, alert_id, message)
-            return
+        # Send email notifications if email is enabled
+        if rule.get('notifications', {}).get('email_enabled', False):
+            send_alert_notification(rule, host, value, message)
+
+        # Send SMS notifications if SMS is enabled
+        if rule.get('notifications', {}).get('sms_enabled', False):
+            send_alert_notification(rule, host, value, message)
         cursor.close()
         return
     

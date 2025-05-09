@@ -9,17 +9,16 @@ from twilio.rest import Client
 def send_alert_notification(rule, host, value, message):
     """Send notifications for a triggered alert."""
     notifications = rule.get('notifications', {})
-    severity = rule.get('severity', 'info')
     
-    # Send email for warning and critical (when email is enabled)
-    if severity in ['warning', 'critical'] and notifications.get('email_enabled', False):
-        # Use global config for recipients instead of per-rule recipients
+    # Send email if email is enabled (regardless of severity)
+    if notifications.get('email_enabled', False):
+        # Use global config for recipients
         recipients = current_app.config.get('ALERT_EMAIL_RECIPIENTS', '')
         if recipients:
             send_email_notification(rule, host, value, message, recipients)
     
-    # Send SMS for critical severity (when SMS is enabled)
-    if severity == 'critical' and notifications.get('sms_enabled', False):
+    # Send SMS if SMS is enabled (regardless of severity)
+    if notifications.get('sms_enabled', False):
         # Use global config for recipients
         recipients = current_app.config.get('TWILIO_TO_NUMBERS', '')
         if recipients:
@@ -43,7 +42,7 @@ def send_sms_notification(rule, host, value, message, recipients):
         client = Client(account_sid, auth_token)
         
         # Create SMS message - keep it concise for SMS
-        sms_body = f"ALERT [{rule['severity'].upper()}]: {rule['name']}\n"
+        sms_body = f"Liberrex Monitoring: {rule['name']}\n"
         sms_body += f"Host: {host_display_name}\n"
         sms_body += f"Value: {value}\n"
         sms_body += f"Threshold: {rule['threshold']}"
@@ -83,16 +82,15 @@ def send_email_notification(rule, host, value, message, recipients):
         msg = MIMEMultipart()
         msg['From'] = from_email
         msg['To'] = recipients
-        msg['Subject'] = f"ALERT [{rule['severity'].upper()}]: {rule['name']}"
+        msg['Subject'] = f"Liberrex Monitoring: {rule['name']}"
         
         # Email body
         body = f"""
         <html>
         <body>
-            <h2>Alert Triggered: {rule['name']}</h2>
+            <h2>Liberrex Monitoring: {rule['name']}</h2>
             <p><strong>Host:</strong> {host_display_name}</p>
 	    <p><strong>Host ID:</strong> {host}</p>
-            <p><strong>Severity:</strong> {rule['severity'].upper()}</p>
             <p><strong>Message:</strong> {message}</p>
             <p><strong>Current Value:</strong> {value}</p>
             <p><strong>Threshold:</strong> {rule['threshold']}</p>
