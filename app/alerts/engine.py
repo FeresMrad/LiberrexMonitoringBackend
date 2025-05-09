@@ -207,11 +207,11 @@ def handle_alert_trigger(rule, host, value, is_email_alert=False, is_sms_alert=F
         # we still want to send the email notification
         # Send email notifications if email is enabled
         if rule.get('notifications', {}).get('email_enabled', False):
-            send_alert_notification(rule, host, value, message)
+            send_email_for_existing_alert(rule, host, value, alert_id, message)
 
         # Send SMS notifications if SMS is enabled
         if rule.get('notifications', {}).get('sms_enabled', False):
-            send_alert_notification(rule, host, value, message)
+            send_sms_for_existing_alert(rule, host, value, alert_id, message)
         cursor.close()
         return
     
@@ -252,17 +252,18 @@ def handle_alert_trigger(rule, host, value, is_email_alert=False, is_sms_alert=F
 def send_email_for_existing_alert(rule, host, value, alert_id, message):
     """Send an email notification for an existing alert with cooldown period."""
     try:
-        rule_id = rule['id']
-        
-        # Check if we've already sent an email recently (e.g., within 30 minutes)
+        # Add a new dictionary to track alerts if it doesn't exist
+        if 'alert_cooldowns' not in alert_state:
+            alert_state['alert_cooldowns'] = {}
+            
         cooldown_minutes = 30
         current_time = datetime.datetime.now()
         
-        if (rule_id in alert_state and 
-            host in alert_state[rule_id] and 
-            alert_state[rule_id][host].get('last_email_sent')):
+        # Check cooldown using alert_id as the key
+        if (alert_id in alert_state['alert_cooldowns'] and 
+            alert_state['alert_cooldowns'][alert_id].get('last_email_sent')):
             
-            last_sent = alert_state[rule_id][host]['last_email_sent']
+            last_sent = alert_state['alert_cooldowns'][alert_id]['last_email_sent']
             time_diff = (current_time - last_sent).total_seconds() / 60
             
             if time_diff < cooldown_minutes:
@@ -276,9 +277,11 @@ def send_email_for_existing_alert(rule, host, value, alert_id, message):
         current_app.logger.info(f"Sending email for existing alert {alert_id}")
         send_alert_notification(rule, host, value, message)
         
-        # Update the last sent timestamp
-        if rule_id in alert_state and host in alert_state[rule_id]:
-            alert_state[rule_id][host]['last_email_sent'] = current_time
+        # Update the last sent timestamp using alert_id
+        if 'alert_cooldowns' in alert_state:
+            if alert_id not in alert_state['alert_cooldowns']:
+                alert_state['alert_cooldowns'][alert_id] = {}
+            alert_state['alert_cooldowns'][alert_id]['last_email_sent'] = current_time
             
     except Exception as e:
         current_app.logger.error(f"Error sending email for existing alert: {e}", exc_info=True)
@@ -286,17 +289,18 @@ def send_email_for_existing_alert(rule, host, value, alert_id, message):
 def send_sms_for_existing_alert(rule, host, value, alert_id, message):
     """Send an SMS notification for an existing alert with cooldown period."""
     try:
-        rule_id = rule['id']
-        
-        # Check if we've already sent an SMS recently (e.g., within 30 minutes)
+        # Add a new dictionary to track alerts if it doesn't exist
+        if 'alert_cooldowns' not in alert_state:
+            alert_state['alert_cooldowns'] = {}
+            
         cooldown_minutes = 30
         current_time = datetime.datetime.now()
         
-        if (rule_id in alert_state and 
-            host in alert_state[rule_id] and 
-            alert_state[rule_id][host].get('last_sms_sent')):
+        # Check cooldown using alert_id as the key
+        if (alert_id in alert_state['alert_cooldowns'] and 
+            alert_state['alert_cooldowns'][alert_id].get('last_sms_sent')):
             
-            last_sent = alert_state[rule_id][host]['last_sms_sent']
+            last_sent = alert_state['alert_cooldowns'][alert_id]['last_sms_sent']
             time_diff = (current_time - last_sent).total_seconds() / 60
             
             if time_diff < cooldown_minutes:
@@ -310,9 +314,11 @@ def send_sms_for_existing_alert(rule, host, value, alert_id, message):
         current_app.logger.info(f"Sending SMS for existing alert {alert_id}")
         send_alert_notification(rule, host, value, message)
         
-        # Update the last sent timestamp
-        if rule_id in alert_state and host in alert_state[rule_id]:
-            alert_state[rule_id][host]['last_sms_sent'] = current_time
+        # Update the last sent timestamp using alert_id
+        if 'alert_cooldowns' in alert_state:
+            if alert_id not in alert_state['alert_cooldowns']:
+                alert_state['alert_cooldowns'][alert_id] = {}
+            alert_state['alert_cooldowns'][alert_id]['last_sms_sent'] = current_time
             
     except Exception as e:
         current_app.logger.error(f"Error sending SMS for existing alert: {e}", exc_info=True)
