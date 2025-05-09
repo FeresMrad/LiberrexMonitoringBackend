@@ -6,23 +6,19 @@ from datetime import datetime
 from flask import current_app
 from twilio.rest import Client
 
-def send_alert_notification(rule, host, value, message):
-    """Send notifications for a triggered alert."""
-    notifications = rule.get('notifications', {})
-    
-    # Send email if email is enabled (regardless of severity)
-    if notifications.get('email_enabled', False):
-        # Use global config for recipients
-        recipients = current_app.config.get('ALERT_EMAIL_RECIPIENTS', '')
-        if recipients:
-            send_email_notification(rule, host, value, message, recipients)
-    
-    # Send SMS if SMS is enabled (regardless of severity)
-    if notifications.get('sms_enabled', False):
-        # Use global config for recipients
-        recipients = current_app.config.get('TWILIO_TO_NUMBERS', '')
-        if recipients:
-            send_sms_notification(rule, host, value, message, recipients)
+def send_email_alert(rule, host, value, message):
+    """Send email notification for an alert."""
+    # Use global config for recipients
+    recipients = current_app.config.get('ALERT_EMAIL_RECIPIENTS', '')
+    if recipients:
+        send_email_notification(rule, host, value, message, recipients)
+
+def send_sms_alert(rule, host, value, message):
+    """Send SMS notification for an alert."""
+    # Use global config for recipients
+    recipients = current_app.config.get('TWILIO_TO_NUMBERS', '')
+    if recipients:
+        send_sms_notification(rule, host, value, message, recipients)
 
 def send_sms_notification(rule, host, value, message, recipients):
     """Send an SMS notification for an alert."""

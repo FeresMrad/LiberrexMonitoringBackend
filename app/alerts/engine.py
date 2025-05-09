@@ -4,7 +4,7 @@ from flask import current_app
 import datetime
 from app.mysql import get_db
 from app.alerts.rules import get_all_rules, get_rules_for_measurement
-from app.alerts.notification import send_alert_notification
+from app.alerts.notification import send_email_alert, send_sms_alert
 
 # Global in-memory store for last seen values and breach tracking
 # Format: {rule_id: {host: {'last_value': value, 'last_check': timestamp, 'breach_count': 0, 'email_breach_count': 0}}}
@@ -236,12 +236,13 @@ def handle_alert_trigger(rule, host, value, is_email_alert=False, is_sms_alert=F
         # Send WebSocket notifications to connected users
         send_alert_websocket_notification(alert_id, rule, host, value, message)
         
-        # Send email notifications if this is an email alert or if no separate email threshold is defined
+        # Send email notifications (if configured and triggered)
         if is_email_alert or (rule.get('email_threshold') is None and rule.get('notifications', {}).get('email_enabled', False)):
-            send_alert_notification(rule, host, value, message)
+            send_email_alert(rule, host, value, message)
 
+        # Send SMS notifications (if configured and triggered)
         if is_sms_alert or (rule.get('sms_threshold') is None and rule.get('notifications', {}).get('sms_enabled', False)):
-            send_alert_notification(rule, host, value, message)
+            send_sms_alert(rule, host, value, message)
 
     except Exception as e:
         current_app.logger.error(f"Database error inserting alert: {e}", exc_info=True)
@@ -275,7 +276,7 @@ def send_email_for_existing_alert(rule, host, value, alert_id, message):
                 
         # Send the email
         current_app.logger.info(f"Sending email for existing alert {alert_id}")
-        send_alert_notification(rule, host, value, message)
+        send_email_alert(rule, host, value, message)
         
         # Update the last sent timestamp using alert_id
         if 'alert_cooldowns' in alert_state:
@@ -312,7 +313,7 @@ def send_sms_for_existing_alert(rule, host, value, alert_id, message):
                 
         # Send the SMS
         current_app.logger.info(f"Sending SMS for existing alert {alert_id}")
-        send_alert_notification(rule, host, value, message)
+        send_sms_alert(rule, host, value, message)
         
         # Update the last sent timestamp using alert_id
         if 'alert_cooldowns' in alert_state:
