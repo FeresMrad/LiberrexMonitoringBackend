@@ -132,7 +132,7 @@ def create_rule(name, description, metric_type, comparison, threshold, targets,
             (id, name, description, metric_type, comparison, threshold, enabled, 
              breach_count, email_threshold, email_breach_count, 
              sms_threshold, sms_breach_count)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s, %s)
         """, (
             rule_id, name, description, metric_type, comparison, threshold, 
             min_breach_count, email_threshold, email_breach_count,
@@ -161,7 +161,7 @@ def update_rule(rule_id, updates):
         
         # Update basic rule properties
         if any(k in updates for k in ['name', 'description', 'metric_type', 'comparison', 
-                                     'threshold', 'enabled' 'min_breach_count',
+                                     'threshold', 'enabled', 'min_breach_count',
                                      'email_threshold', 'email_breach_count', 'sms_threshold', 'sms_breach_count']):
             fields = []
             params = []
