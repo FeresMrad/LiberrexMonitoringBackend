@@ -343,33 +343,6 @@ def create_notifications_for_alert(cursor, alert_id, rule):
         
     current_app.logger.info(f"Created notifications for alert {alert_id} for {len(users)} users")
 
-def send_alert_websocket_notification(alert_id, rule, host, value, message):
-    """Send alert notifications via WebSocket."""
-    try:
-        from flask import current_app
-        from app import socketio
-        
-        # Create notification payload
-        notification_data = {
-            'id': alert_id,
-            'rule_id': rule['id'],
-            'rule_name': rule['name'],
-            'host': host,
-            'value': value,
-            'message': message,
-            'comparison': rule['comparison'],
-            'threshold': rule['threshold'],
-            'metric_type': rule['metric_type'],
-            'triggered_at': datetime.datetime.now().isoformat(),
-            'status': 'triggered'
-        }
-        
-        # Emit to all connected clients - they will filter based on their permissions
-        socketio.emit('alert_notification', notification_data)
-        
-        current_app.logger.info(f"WebSocket notification sent for alert {alert_id}")
-    except Exception as e:
-        current_app.logger.error(f"Error sending WebSocket notification: {e}", exc_info=True)
 
 def resolve_alert_if_needed(rule, host, current_value):
     """Resolve any active alerts that are no longer breaching threshold."""
