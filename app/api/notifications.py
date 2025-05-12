@@ -20,6 +20,7 @@ def get_notifications():
     query = """
         SELECT n.id, n.alert_id, n.user_id, n.read, n.created_at, 
                e.host, e.value, e.message, e.triggered_at, e.rule_id,
+               CASE WHEN e.resolved_at IS NULL THEN 'triggered' ELSE 'resolved' END AS status,
                r.name as rule_name, r.metric_type, r.comparison, r.threshold
         FROM notifications n
         JOIN alert_events e ON n.alert_id = e.id

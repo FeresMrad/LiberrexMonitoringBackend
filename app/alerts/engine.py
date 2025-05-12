@@ -360,7 +360,8 @@ def send_alert_websocket_notification(alert_id, rule, host, value, message):
             'comparison': rule['comparison'],
             'threshold': rule['threshold'],
             'metric_type': rule['metric_type'],
-            'triggered_at': datetime.datetime.now().isoformat()
+            'triggered_at': datetime.datetime.now().isoformat(),
+            'status': 'triggered'
         }
         
         # Emit to all connected clients - they will filter based on their permissions
