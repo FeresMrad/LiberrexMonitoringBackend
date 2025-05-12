@@ -13,10 +13,9 @@ def get_user_by_email(email):
     cursor = db.cursor(dictionary=True)
     
     cursor.execute("""
-        SELECT u.id, u.email, u.password_hash, u.name, u.role, w.has_wildcard
-        FROM users u
-        LEFT JOIN user_wildcard_permissions w ON u.id = w.user_id
-        WHERE u.email = %s
+        SELECT id, email, password_hash, name, role, has_wildcard_permission
+        FROM users
+        WHERE email = %s
     """, (email,))
     
     user = cursor.fetchone()
@@ -36,10 +35,9 @@ def get_user_by_id(user_id):
     cursor = db.cursor(dictionary=True)
     
     cursor.execute("""
-        SELECT u.id, u.email, u.password_hash, u.name, u.role, w.has_wildcard
-        FROM users u
-        LEFT JOIN user_wildcard_permissions w ON u.id = w.user_id
-        WHERE u.id = %s
+        SELECT id, email, password_hash, name, role, has_wildcard_permission
+        FROM users
+        WHERE id = %s
     """, (user_id,))
     
     user = cursor.fetchone()
@@ -62,10 +60,10 @@ def get_user_permissions(user_id):
     db = get_db()
     cursor = db.cursor(dictionary=True)
     
-    # Check for wildcard permissions
+    # Check user table directly for wildcard permission
     cursor.execute("""
-        SELECT has_wildcard FROM user_wildcard_permissions
-        WHERE user_id = %s AND has_wildcard = TRUE
+        SELECT has_wildcard_permission FROM users
+        WHERE id = %s AND has_wildcard_permission = TRUE
     """, (user_id,))
     
     wildcard = cursor.fetchone()
@@ -134,26 +132,23 @@ def create_user(email, password, name, role="user", permissions=None, creator_id
         db = get_db()
         cursor = db.cursor()
         
-        # Insert user
+        # Insert user with wildcard permission flag
         cursor.execute("""
-            INSERT INTO users (id, email, password_hash, name, role)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO users (id, email, password_hash, name, role, has_wildcard_permission)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """, (
             user_id,
             email,
             generate_password_hash(password),
             name,
-            role
+            role,
+            has_wildcard
         ))
         
-        # Set permissions
-        if has_wildcard:
-            cursor.execute("""
-                INSERT INTO user_wildcard_permissions (user_id, has_wildcard)
-                VALUES (%s, TRUE)
-            """, (user_id,))
-        else:
-            # Add specific host permissions
+        # No need to insert wildcard permission separately - it's now in the users table!
+        
+        # Add specific host permissions (if not using wildcard)
+        if not has_wildcard:
             host_permissions = permissions.get('hosts', [])
             if isinstance(host_permissions, list):
                 for host_id in host_permissions:
@@ -246,9 +241,8 @@ def update_user(user_id, updates, modifier_id=None):
                 
                 # Set wildcard permission
                 cursor.execute("""
-                    INSERT INTO user_wildcard_permissions (user_id, has_wildcard)
-                    VALUES (%s, TRUE)
-                    ON DUPLICATE KEY UPDATE has_wildcard = TRUE
+                    UPDATE users SET has_wildcard_permission = TRUE
+                    WHERE id = %s
                 """, (user_id,))
         
         # Update permissions if provided
@@ -359,37 +353,34 @@ def update_user_permissions(user_id, permissions, modifier_id=None):
         # Clear existing permissions
         cursor.execute("DELETE FROM user_host_permissions WHERE user_id = %s", (user_id,))
         cursor.execute("DELETE FROM user_group_permissions WHERE user_id = %s", (user_id,))
-        cursor.execute("DELETE FROM user_wildcard_permissions WHERE user_id = %s", (user_id,))
         
         # Admin users always get full access
         if user.get('role') == 'admin':
             cursor.execute("""
-                INSERT INTO user_wildcard_permissions (user_id, has_wildcard)
-                VALUES (%s, TRUE)
+                UPDATE users SET has_wildcard_permission = TRUE
+                WHERE id = %s
             """, (user_id,))
         else:
             # Set new permissions
             if permissions.get('hosts') == '*':
                 # Set wildcard permission
                 cursor.execute("""
-                    INSERT INTO user_wildcard_permissions (user_id, has_wildcard)
-                    VALUES (%s, TRUE)
+                    UPDATE users SET has_wildcard_permission = TRUE
+                    WHERE id = %s
                 """, (user_id,))
-            elif isinstance(permissions.get('hosts'), list):
+            else:
                 # Set specific host permissions
-                for host_id in permissions['hosts']:
-                    cursor.execute("""
-                        INSERT INTO user_host_permissions (user_id, host_id)
-                        VALUES (%s, %s)
-                    """, (user_id, host_id))
-            
-            # Set group permissions
-            if isinstance(permissions.get('groups'), list):
-                for group_id in permissions['groups']:
-                    cursor.execute("""
-                        INSERT INTO user_group_permissions (user_id, group_id)
-                        VALUES (%s, %s)
-                    """, (user_id, group_id))
+                cursor.execute("""
+                    UPDATE users SET has_wildcard_permission = FALSE
+                    WHERE id = %s
+                """, (user_id,))
+                
+                if isinstance(permissions.get('hosts'), list):
+                    for host_id in permissions['hosts']:
+                        cursor.execute("""
+                            INSERT INTO user_host_permissions (user_id, host_id)
+                            VALUES (%s, %s)
+                        """, (user_id, host_id))
         
         # Commit changes
         db.commit()
@@ -443,9 +434,8 @@ def get_all_users():
     cursor = db.cursor(dictionary=True)
     
     cursor.execute("""
-        SELECT u.id, u.email, u.name, u.role, w.has_wildcard
-        FROM users u
-        LEFT JOIN user_wildcard_permissions w ON u.id = w.user_id
+        SELECT id, email, name, role, has_wildcard_permission
+        FROM users
     """)
     
     users = cursor.fetchall()
