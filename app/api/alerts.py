@@ -252,11 +252,3 @@ def delete_alert(alert_id):
     finally:
         cursor.close()
 
-@alerts_bp.route('/events/<alert_id>/acknowledge', methods=['POST'])
-@require_auth
-def acknowledge_alert(alert_id):
-    """Acknowledge a specific alert event."""
-    # This endpoint would update the alert status to 'acknowledged'
-    # Currently not fully implemented in the code - would need additional DB schema changes
-    
-    return jsonify({"success": True, "message": "Alert acknowledged"})
