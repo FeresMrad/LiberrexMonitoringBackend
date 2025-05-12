@@ -55,34 +55,6 @@ def fetch_host_metric(host, measurement, field, retries=3):
             time.sleep(1)
 
     return 0  # Default value if all retries fail1~"""InfluxDB service module."""
-import requests
-from flask import current_app
-
-
-def query_influxdb(query):
-    """Execute a query against InfluxDB and return the results.
-    
-    Args:
-        query: The InfluxDB query string to execute
-        
-    Returns:
-        dict: The JSON response from InfluxDB
-    """
-    try:
-        response = requests.get(
-            f"{current_app.config['INFLUXDB_URL']}/query",
-            params={
-                "db": current_app.config['INFLUXDB_DATABASE'],
-                "q": query,
-                "u": current_app.config['INFLUXDB_USER'],
-                "p": current_app.config['INFLUXDB_PASSWORD'],
-            }
-        )
-        response.raise_for_status()  # Raise exception for HTTP errors
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        current_app.logger.error(f"Error querying InfluxDB: {e}")
-        return {"results": [{"series": []}]}
 
 
 def fetch_host_metric(host, measurement, field, retries=3):
