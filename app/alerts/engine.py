@@ -3,6 +3,7 @@ import uuid
 from flask import current_app
 import datetime
 from app.mysql import get_db
+from app.users import can_access_host
 from app.alerts.rules import get_all_rules, get_rules_for_measurement
 from app.alerts.notification import send_email_alert, send_sms_alert
 
@@ -228,13 +229,10 @@ def handle_alert_trigger(rule, host, value, is_email_alert=False, is_sms_alert=F
         """, (alert_id, rule['id'], host, value, message))
         
         # Create notifications for all users
-        create_notifications_for_alert(cursor, alert_id, rule)
+        create_notifications_for_alert(cursor, alert_id, rule, host)
         
         db.commit()
         current_app.logger.info(f"Successfully inserted alert with ID {alert_id}")
-        
-        # Send WebSocket notifications to connected users
-        send_alert_websocket_notification(alert_id, rule, host, value, message)
         
         # Send email notifications (if configured and triggered)
         if is_email_alert or (rule.get('email_threshold') is None and rule.get('notifications', {}).get('email_enabled', False)):
@@ -324,17 +322,21 @@ def send_sms_for_existing_alert(rule, host, value, alert_id, message):
     except Exception as e:
         current_app.logger.error(f"Error sending SMS for existing alert: {e}", exc_info=True)
 
-def create_notifications_for_alert(cursor, alert_id, rule):
-    """Create notifications for all users who should be notified about this alert."""
+def create_notifications_for_alert(cursor, alert_id, rule, host):
     # Get all users
-    cursor.execute("SELECT id FROM users")
+    cursor.execute("SELECT id, role FROM users")
     users = cursor.fetchall()
     
-    # Create a notification for each user
+    # Create a notification for each user with access
     for user in users:
         user_id = user['id']
-        notification_id = str(uuid.uuid4())
         
+        # Skip users who don't have access to this host
+        # Admin users (or users with the appropriate role) always get notifications
+        if user['role'] != 'admin' and not can_access_host(user_id, host):
+            continue
+            
+        notification_id = str(uuid.uuid4())
         cursor.execute("""
             INSERT INTO notifications
             (id, alert_id, user_id, `read`)
