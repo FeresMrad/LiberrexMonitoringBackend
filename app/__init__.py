@@ -47,6 +47,9 @@ def create_app():
     # Register socket events
     register_socket_events(socketio, host_subscribers)
 
+    from app.uptime_checker import init_uptime_checker
+    init_uptime_checker(app)
+
     # Initialize alerts
     from app.alerts.engine import rebuild_alert_state
     with app.app_context():

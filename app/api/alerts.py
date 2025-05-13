@@ -66,7 +66,6 @@ def add_rule():
         sms_threshold = data.get('sms_threshold')
         sms_breach_count = data.get('sms_breach_count')
 
-
     # Create rule
     try:
         rule_id = create_rule(
@@ -92,6 +91,10 @@ def add_rule():
                 'sms_recipients': ''
             }
         })
+        
+        # Update the uptime checker to pick up new rules
+        from app.uptime_checker import update_uptime_checker
+        update_uptime_checker(current_app)
         
         return jsonify({"success": True, "rule_id": rule_id}), 201
     
