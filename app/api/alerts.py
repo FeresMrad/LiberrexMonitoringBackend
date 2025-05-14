@@ -37,10 +37,21 @@ def add_rule():
         return jsonify({"error": "No data provided"}), 400
     
     # Validate required fields
-    required_fields = ['name', 'metric_type', 'comparison', 'threshold']
+    required_fields = ['name', 'metric_type']
     for field in required_fields:
         if field not in data:
             return jsonify({"error": f"Field '{field}' is required"}), 400
+    
+    # For non-uptime rules, also require comparison and threshold
+    if data.get('metric_type') != 'uptime.status':
+        if 'comparison' not in data:
+            return jsonify({"error": "Field 'comparison' is required"}), 400
+        if 'threshold' not in data:
+            return jsonify({"error": "Field 'threshold' is required"}), 400
+    else:
+        # For uptime rules, set default comparison and threshold
+        data['comparison'] = 'above'
+        data['threshold'] = 60  # 60 seconds
     
     # Get notification settings directly
     notifications = data.get('notifications', {})

@@ -34,10 +34,12 @@ def get_all_rules():
 def get_rules_for_measurement(measurement):
     """Get alert rules that apply to a specific measurement."""
     all_rules = get_all_rules()
+    
     # Filter rules: must be enabled and match the measurement type
     enabled_rules = [rule for rule in all_rules 
                     if rule.get('enabled', False) is True and 
-                    rule['metric_type'].startswith(f"{measurement}.")]
+                      (rule['metric_type'].startswith(f"{measurement}.") or 
+                      (measurement == 'uptime' and rule['metric_type'] == 'uptime.status'))]
     
     return enabled_rules
 

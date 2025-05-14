@@ -427,6 +427,11 @@ def process_metric_for_alerts(measurement, host, fields, timestamp):
                 continue
             
             current_app.logger.info(f"Rule {rule['id']} applies to host {host}")
+            
+            # Skip uptime rules - they're handled by the uptime_checker
+            if rule['metric_type'] == 'uptime.status':
+                current_app.logger.info(f"Skipping uptime rule {rule['id']} - handled by uptime checker")
+                continue
                 
             # Extract the field we care about from the metric
             metric_parts = rule['metric_type'].split('.')
