@@ -31,7 +31,7 @@ def init_uptime_checker(app):
             try:
                 from app.services.influxdb import query_influxdb
                 from app.alerts.rules import get_all_rules
-                from app.alerts.engine import alert_state
+                from app.alerts.engine import alert_state, handle_alert_trigger, is_threshold_breached, resolve_alert_if_needed
                 
                 # Get all active uptime rules
                 all_rules = get_all_rules()
@@ -106,27 +106,39 @@ def init_uptime_checker(app):
                                 
                                 # Get the minimum breach count needed for alerting
                                 min_breach_count = rule.get('breach_count', 1)
+                                
+                                # Previous breach count for checking transitions
+                                previous_breach_count = alert_state[rule_id][host]['breach_count']
                                     
                                 # Check if host appears to be down
-                                if diff_seconds > threshold:
+                                is_down = diff_seconds > threshold
+                                if is_down:
                                     # Increment breach count
                                     alert_state[rule_id][host]['breach_count'] += 1
-                                    breach_count = alert_state[rule_id][host]['breach_count']
+                                    current_breach_count = alert_state[rule_id][host]['breach_count']
                                     
-                                    # Only log a warning if we've reached or passed the threshold for alerting
-                                    if breach_count >= min_breach_count:
-                                        print(f"WARNING: Host {host} appears to be down - last uptime was {diff_seconds:.2f} seconds ago (breach count: {breach_count}/{min_breach_count})")
+                                    # Log appropriate message based on breach count
+                                    if current_breach_count >= min_breach_count:
+                                        print(f"WARNING: Host {host} appears to be down - last uptime was {diff_seconds:.2f} seconds ago (breach count: {current_breach_count}/{min_breach_count})")
                                     else:
-                                        print(f"MONITORING: Host {host} possible downtime - last uptime was {diff_seconds:.2f} seconds ago (breach count: {breach_count}/{min_breach_count})")
+                                        print(f"MONITORING: Host {host} possible downtime - last uptime was {diff_seconds:.2f} seconds ago (breach count: {current_breach_count}/{min_breach_count})")
+                                    
+                                    # Create alert if breach count has just reached the threshold
+                                    if current_breach_count == min_breach_count:
+                                        print(f"TRIGGERING ALERT for rule {rule['id']}, host {host}, value {diff_seconds} after {current_breach_count} breaches")
+                                        # Create an alert in the database
+                                        handle_alert_trigger(rule, host, diff_seconds)
                                 else:
                                     # If host was previously breaching threshold, log recovery
-                                    if rule_id in alert_state and host in alert_state[rule_id] and alert_state[rule_id][host]['breach_count'] > 0:
-                                        previous_count = alert_state[rule_id][host]['breach_count']
-                                        print(f"RECOVERY: Host {host} is back up after {previous_count} breach checks")
+                                    if previous_breach_count > 0:
+                                        print(f"RECOVERY: Host {host} is back up after {previous_breach_count} breach checks")
+                                        
+                                        # If breach count had reached threshold, resolve the alert
+                                        if previous_breach_count >= min_breach_count:
+                                            resolve_alert_if_needed(rule, host, diff_seconds)
                                         
                                     # Reset breach count since host is up
-                                    if rule_id in alert_state and host in alert_state[rule_id]:
-                                        alert_state[rule_id][host]['breach_count'] = 0
+                                    alert_state[rule_id][host]['breach_count'] = 0
                                 
                                 # Update last values
                                 alert_state[rule_id][host]['last_value'] = diff_seconds
