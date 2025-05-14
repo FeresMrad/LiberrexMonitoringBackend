@@ -31,6 +31,7 @@ def init_uptime_checker(app):
             try:
                 from app.services.influxdb import query_influxdb
                 from app.alerts.rules import get_all_rules
+                from app.alerts.engine import alert_state
                 
                 # Get all active uptime rules
                 all_rules = get_all_rules()
@@ -82,11 +83,54 @@ def init_uptime_checker(app):
                             # Calculate difference in seconds
                             diff_seconds = (current_time - last_timestamp).total_seconds()
                             
-                            # If difference is more than 60 seconds, log it
-                            if diff_seconds > 60:
-                                print(f"WARNING: Host {host} appears to be down - last uptime was {diff_seconds:.2f} seconds ago")
-                            else:
-                                print(f"INFO: Host {host} is up - last check was {diff_seconds:.2f} seconds ago")
+                            # Process each uptime rule for this host
+                            for rule in uptime_rules:
+                                # Skip rules that don't apply to this host
+                                if not host_matches_rule(rule, host):
+                                    continue
+                                
+                                rule_id = rule['id']
+                                threshold = rule.get('threshold', 60)  # Default to 60 seconds
+                                
+                                # Initialize state tracking for this rule and host if needed
+                                if rule_id not in alert_state:
+                                    alert_state[rule_id] = {}
+                                if host not in alert_state[rule_id]:
+                                    alert_state[rule_id][host] = {
+                                        'last_value': None,
+                                        'last_check': None,
+                                        'breach_count': 0,
+                                        'email_breach_count': 0,
+                                        'sms_breach_count': 0
+                                    }
+                                
+                                # Get the minimum breach count needed for alerting
+                                min_breach_count = rule.get('breach_count', 1)
+                                    
+                                # Check if host appears to be down
+                                if diff_seconds > threshold:
+                                    # Increment breach count
+                                    alert_state[rule_id][host]['breach_count'] += 1
+                                    breach_count = alert_state[rule_id][host]['breach_count']
+                                    
+                                    # Only log a warning if we've reached or passed the threshold for alerting
+                                    if breach_count >= min_breach_count:
+                                        print(f"WARNING: Host {host} appears to be down - last uptime was {diff_seconds:.2f} seconds ago (breach count: {breach_count}/{min_breach_count})")
+                                    else:
+                                        print(f"MONITORING: Host {host} possible downtime - last uptime was {diff_seconds:.2f} seconds ago (breach count: {breach_count}/{min_breach_count})")
+                                else:
+                                    # If host was previously breaching threshold, log recovery
+                                    if rule_id in alert_state and host in alert_state[rule_id] and alert_state[rule_id][host]['breach_count'] > 0:
+                                        previous_count = alert_state[rule_id][host]['breach_count']
+                                        print(f"RECOVERY: Host {host} is back up after {previous_count} breach checks")
+                                        
+                                    # Reset breach count since host is up
+                                    if rule_id in alert_state and host in alert_state[rule_id]:
+                                        alert_state[rule_id][host]['breach_count'] = 0
+                                
+                                # Update last values
+                                alert_state[rule_id][host]['last_value'] = diff_seconds
+                                alert_state[rule_id][host]['last_check'] = timestamp_str
                         else:
                             print(f"WARNING: No uptime data found for host {host}")
                     
@@ -95,6 +139,17 @@ def init_uptime_checker(app):
             
             except Exception as e:
                 print(f"ERROR in uptime checker: {e}")
+    
+    # Helper function to check if a host is targeted by a rule
+    def host_matches_rule(rule, host):
+        """Check if a host is targeted by this rule."""
+        # Check each target in the rule
+        for target in rule.get('targets', []):
+            if target['target_type'] == 'all':
+                return True
+            elif target['target_type'] == 'host' and target['target_id'] == host:
+                return True
+        return False
     
     # Remove existing job if it exists
     if job is not None:
