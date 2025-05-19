@@ -377,6 +377,45 @@ def resolve_alert_if_needed(rule, host, current_value):
 
 def generate_alert_message(rule, host, value, is_email=False, is_sms=False):
     """Generate an alert message based on the rule and current value."""
+    # For uptime alerts, create a specialized message
+    if rule['metric_type'] == 'uptime.status':
+        # Format the uptime value more nicely
+        if value >= 3600:  # More than an hour
+            hours = int(value // 3600)
+            minutes = int((value % 3600) // 60)
+            formatted_value = f"{hours}h {minutes}m"
+        elif value >= 60:  # More than a minute
+            minutes = int(value // 60)
+            seconds = int(value % 60)
+            formatted_value = f"{minutes}m {seconds}s"
+        else:
+            formatted_value = f"{int(value)}s"
+        
+        # Get the appropriate threshold based on notification type
+        if is_email and rule.get('email_threshold') is not None:
+            threshold_seconds = rule['email_threshold']
+        elif is_sms and rule.get('sms_threshold') is not None:
+            threshold_seconds = rule['sms_threshold']
+        else:
+            threshold_seconds = rule['threshold']
+            
+        # Format the threshold in the same way
+        if threshold_seconds >= 3600:
+            hours = int(threshold_seconds // 3600)
+            minutes = int((threshold_seconds % 3600) // 60)
+            formatted_threshold = f"{hours}h {minutes}m"
+        elif threshold_seconds >= 60:
+            minutes = int(threshold_seconds // 60)
+            seconds = int(threshold_seconds % 60)
+            formatted_threshold = f"{minutes}m {seconds}s"
+        else:
+            formatted_threshold = f"{int(threshold_seconds)}s"
+        
+        # Create the message
+        message = f"Host is down for <strong>{formatted_value}</strong>"
+        return message
+    
+    # For other metric types, use the existing logic
     # Format the metric name (replace dots with spaces, ALL CAPS)
     metric_name = rule['metric_type'].replace('.', ' ').upper()
     

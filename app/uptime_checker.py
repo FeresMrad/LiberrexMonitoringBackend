@@ -109,13 +109,50 @@ def init_uptime_checker(app):
                                 
                                 # Previous breach count for checking transitions
                                 previous_breach_count = alert_state[rule_id][host]['breach_count']
-                                    
+                                
                                 # Check if host appears to be down
                                 is_down = diff_seconds > threshold
+                                
+                                # Variables to track if email or SMS alerts should be triggered
+                                is_email_alert = False
+                                is_sms_alert = False
+                                
                                 if is_down:
                                     # Increment breach count
                                     alert_state[rule_id][host]['breach_count'] += 1
                                     current_breach_count = alert_state[rule_id][host]['breach_count']
+                                    
+                                    # Check if this breach should also update email breach count
+                                    if rule.get('notifications', {}).get('email_enabled', False) and rule.get('email_threshold') is not None:
+                                        email_threshold = float(rule['email_threshold'])
+                                        if diff_seconds > email_threshold:
+                                            alert_state[rule_id][host]['email_breach_count'] += 1
+                                            email_breach_count = alert_state[rule_id][host]['email_breach_count']
+                                            email_min_breach_count = rule.get('email_breach_count')
+                                            
+                                            # Trigger email notification if breach count equals the required minimum
+                                            is_email_alert = alert_state[rule_id][host]['email_breach_count'] == email_min_breach_count
+                                            if is_email_alert:
+                                                print(f"EMAIL ALERT TRIGGERED for rule {rule['id']}, host {host}, value {diff_seconds} (breach count: {email_breach_count}/{email_min_breach_count})")
+                                        else:
+                                            # Reset email breach count if threshold no longer breached
+                                            alert_state[rule_id][host]['email_breach_count'] = 0
+                                    
+                                    # Similarly for SMS
+                                    if rule.get('notifications', {}).get('sms_enabled', False) and rule.get('sms_threshold') is not None:
+                                        sms_threshold = float(rule['sms_threshold'])
+                                        if diff_seconds > sms_threshold:
+                                            alert_state[rule_id][host]['sms_breach_count'] += 1
+                                            sms_breach_count = alert_state[rule_id][host]['sms_breach_count']
+                                            sms_min_breach_count = rule.get('sms_breach_count')
+                                            
+                                            # Trigger SMS notification if breach count equals the required minimum
+                                            is_sms_alert = alert_state[rule_id][host]['sms_breach_count'] == sms_min_breach_count
+                                            if is_sms_alert:
+                                                print(f"SMS ALERT TRIGGERED for rule {rule['id']}, host {host}, value {diff_seconds} (breach count: {sms_breach_count}/{sms_min_breach_count})")
+                                        else:
+                                            # Reset SMS breach count if threshold no longer breached
+                                            alert_state[rule_id][host]['sms_breach_count'] = 0
                                     
                                     # Log appropriate message based on breach count
                                     if current_breach_count >= min_breach_count:
@@ -126,8 +163,13 @@ def init_uptime_checker(app):
                                     # Create alert if breach count has just reached the threshold
                                     if current_breach_count == min_breach_count:
                                         print(f"TRIGGERING ALERT for rule {rule['id']}, host {host}, value {diff_seconds} after {current_breach_count} breaches")
-                                        # Create an alert in the database
-                                        handle_alert_trigger(rule, host, diff_seconds)
+                                        # Create an alert in the database - pass the email and SMS alert flags
+                                        handle_alert_trigger(rule, host, diff_seconds, is_email_alert=is_email_alert, is_sms_alert=is_sms_alert)
+                                    elif is_email_alert or is_sms_alert:
+                                        # If email or SMS alert was triggered but the main alert already exists
+                                        # we need to handle the notification separately
+                                        if current_breach_count > min_breach_count:
+                                            handle_alert_trigger(rule, host, diff_seconds, is_email_alert=is_email_alert, is_sms_alert=is_sms_alert)
                                 else:
                                     # If host was previously breaching threshold, log recovery
                                     if previous_breach_count > 0:
@@ -137,8 +179,10 @@ def init_uptime_checker(app):
                                         if previous_breach_count >= min_breach_count:
                                             resolve_alert_if_needed(rule, host, diff_seconds)
                                         
-                                    # Reset breach count since host is up
+                                    # Reset all breach counts since host is up
                                     alert_state[rule_id][host]['breach_count'] = 0
+                                    alert_state[rule_id][host]['email_breach_count'] = 0
+                                    alert_state[rule_id][host]['sms_breach_count'] = 0
                                 
                                 # Update last values
                                 alert_state[rule_id][host]['last_value'] = diff_seconds
